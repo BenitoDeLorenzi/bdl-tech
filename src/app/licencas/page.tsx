@@ -1,0 +1,460 @@
+import Link from "next/link";
+import { AdminShell } from "@/components/admin-shell";
+import {
+  CalendarDays,
+  CircleCheck,
+  CircleX,
+  Clock3,
+  KeyRound,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  formatCurrency,
+  formatDate,
+  formatDaysRemaining,
+  formatLicencaStatus,
+  getLicencaFormOptions,
+  getLicencas,
+  type LicencaStatus,
+  type LicencaVigenciaStatus,
+} from "@/lib/licencas-data";
+import { requireRole } from "@/lib/auth-data";
+import { DeleteLicencaForm } from "./delete-licenca-form";
+import { LicencaForm } from "./licenca-form";
+import { LicencasToasts } from "./licencas-toasts";
+
+export const dynamic = "force-dynamic";
+
+type PageProps = {
+  searchParams: Promise<{
+    deleted?: string;
+    error?: string;
+    q?: string;
+    status?: string;
+  }>;
+};
+
+
+
+const filterOptions = [
+  { label: "Todas", status: undefined },
+  { label: "Ativas", status: "active" },
+  { label: "Suspensas", status: "suspended" },
+  { label: "Vencidas", status: "expired" },
+  { label: "Canceladas", status: "cancelled" },
+];
+
+export default async function LicencasPage({ searchParams }: PageProps) {
+  const profile = await requireRole(["bdl_admin"]);
+
+  const params = await searchParams;
+  const defaultInicio = getTodayIsoDate();
+  const defaultFim = addOneYearIsoDate(defaultInicio);
+  const [licencas, formOptions] = await Promise.all([
+    getLicencas({
+      query: params.q,
+      status: params.status,
+    }),
+    getLicencaFormOptions(),
+  ]);
+  const activeCount = licencas.filter((licenca) => licenca.status === "active")
+    .length;
+  const searchTerm = params.q?.trim();
+  const hasActiveFilters = Boolean(searchTerm || params.status);
+  const buildFilterHref = (status?: string) => {
+    const query = new URLSearchParams();
+
+    if (searchTerm) {
+      query.set("q", searchTerm);
+    }
+
+    if (status) {
+      query.set("status", status);
+    }
+
+    const queryString = query.toString();
+    return `/licencas${queryString ? `?${queryString}` : ""}`;
+  };
+
+  return (
+    <AdminShell
+      active="licencas"
+      icon={KeyRound}
+      profile={profile}
+      title="Licenças"
+      actions={
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+          <form className="flex min-w-0 shrink-0 justify-end gap-2">
+            <div className="relative min-w-0 w-[320px]">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-9 pl-9"
+                name="q"
+                placeholder="Buscar licença"
+                defaultValue={params.q}
+              />
+            </div>
+            {params.status ? (
+              <input type="hidden" name="status" value={params.status} />
+            ) : null}
+            {hasActiveFilters ? (
+              <Link
+                href="/licencas"
+                className={buttonVariants({
+                  variant: "outline",
+                  className: "h-9 gap-2",
+                })}
+              >
+                <X className="size-4" />
+                Limpar
+              </Link>
+            ) : (
+              <button
+                type="submit"
+                className={buttonVariants({
+                  variant: "outline",
+                  className: "h-9 gap-2",
+                })}
+              >
+                <Search className="size-4" />
+                Filtrar
+              </button>
+            )}
+          </form>
+
+          <div className="flex shrink-0 gap-1 overflow-x-auto rounded-lg bg-muted p-1">
+            {filterOptions.map((option) => {
+              const isActive = option.status
+                ? params.status === option.status
+                : !params.status;
+
+              return (
+                <Link
+                  key={option.label}
+                  href={buildFilterHref(option.status)}
+                  className={buttonVariants({
+                    variant: isActive ? "default" : "ghost",
+                    size: "sm",
+                    className: isActive
+                      ? "h-7 px-2 text-xs shadow-sm"
+                      : "h-7 px-2 text-xs text-muted-foreground",
+                  })}
+                >
+                  {option.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          <Separator orientation="vertical" className="hidden h-5 xl:block" />
+
+          <div className="hidden shrink-0 items-center gap-1.5 xl:flex">
+            <Badge variant="outline" className="h-7 border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100">
+              {licencas.length} total
+            </Badge>
+            <Badge variant="outline" className="h-7 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+              {activeCount} ativas
+            </Badge>
+          </div>
+
+          <Dialog>
+            <DialogTrigger
+              className={buttonVariants({
+                className: "h-9 shrink-0 gap-2",
+              })}
+            >
+              <Plus className="size-4" />
+              Nova licença
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Nova licença</DialogTitle>
+              </DialogHeader>
+              <LicencaForm
+                defaultFim={defaultFim}
+                defaultInicio={defaultInicio}
+                modulos={formOptions.modulos}
+                prefeituras={formOptions.prefeituras}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
+      }
+    >
+      <LicencasToasts deleted={params.deleted} error={params.error} />
+      <main className="flex flex-1 flex-col gap-3 p-4 md:p-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-lg border bg-muted/40">
+                    <KeyRound className="size-5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <CardTitle>Lista de licenças</CardTitle>
+                    <CardDescription>
+                      Módulos liberados por prefeitura e vigência contratada.
+                    </CardDescription>
+                  </div>
+                </div>
+                <Badge variant="outline">{licencas.length} registro(s)</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {licencas.length ? (
+                <div className="overflow-hidden rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Prefeitura</TableHead>
+                        <TableHead>Módulo</TableHead>
+                        <TableHead>Vigência</TableHead>
+                        <TableHead>Valor anual</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="w-[92px] text-right">
+                          Ações
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {licencas.map((licenca) => (
+                        <TableRow key={licenca.id}>
+                          <TableCell>
+                            <div className="font-medium">
+                              {licenca.prefeitura_nome}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {licenca.prefeitura_cnpj}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium">{licenca.modulo_nome}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {licenca.modulo_subdominio}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 text-sm">
+                                <CalendarDays className="size-4 text-muted-foreground" />
+                                {formatDate(licenca.inicio)} até{" "}
+                                {formatDate(licenca.fim)}
+                              </div>
+                              <LicencaVigenciaBadge
+                                diasRestantes={licenca.dias_restantes}
+                                status={licenca.vigencia_status}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatCurrency(licenca.valor_anual)}</TableCell>
+                          <TableCell>
+                            <LicencaStatusBadge status={licenca.status} />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex justify-end gap-1">
+                              <Dialog>
+                                <DialogTrigger
+                                  className={buttonVariants({
+                                    variant: "ghost",
+                                    size: "icon-sm",
+                                  })}
+                                  title="Editar licença"
+                                >
+                                  <Pencil className="size-4" />
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-lg">
+                                  <DialogHeader>
+                                    <DialogTitle>Editar licença</DialogTitle>
+                                  </DialogHeader>
+                                  <LicencaForm
+                                    licenca={licenca}
+                                    modulos={formOptions.modulos}
+                                    prefeituras={formOptions.prefeituras}
+                                  />
+                                </DialogContent>
+                              </Dialog>
+
+                              <Dialog>
+                                <DialogTrigger
+                                  className={buttonVariants({
+                                    variant: "destructive",
+                                    size: "icon-sm",
+                                  })}
+                                  title="Excluir licença"
+                                >
+                                  <Trash2 className="size-4" />
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-md">
+                                  <DialogHeader>
+                                    <DialogTitle>Excluir licença</DialogTitle>
+                                    <DialogDescription>
+                                      Esta ação remove a licença de{" "}
+                                      {licenca.modulo_nome} para{" "}
+                                      {licenca.prefeitura_nome}.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <DeleteLicencaForm id={licenca.id} />
+                                </DialogContent>
+                              </Dialog>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border bg-muted/20 p-8 text-center">
+                  <div className="flex size-12 items-center justify-center rounded-lg border bg-background">
+                    <KeyRound className="size-6 text-muted-foreground" />
+                  </div>
+                  <h3 className="mt-4 text-base font-semibold">
+                    Nenhuma licença encontrada
+                  </h3>
+                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                    Cadastre uma licença para liberar um módulo para uma
+                    prefeitura.
+                  </p>
+                  <Dialog>
+                    <DialogTrigger
+                      className={buttonVariants({
+                        className: "mt-4 gap-2",
+                      })}
+                    >
+                      <Plus className="size-4" />
+                      Cadastrar licença
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>Nova licença</DialogTitle>
+                      </DialogHeader>
+                      <LicencaForm
+                        defaultFim={defaultFim}
+                        defaultInicio={defaultInicio}
+                        modulos={formOptions.modulos}
+                        prefeituras={formOptions.prefeituras}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </main>
+    </AdminShell>
+  );
+}
+
+function LicencaStatusBadge({ status }: { status: LicencaStatus }) {
+  const styles: Record<LicencaStatus, string> = {
+    active:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50",
+    cancelled:
+      "border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100",
+    expired: "border-red-200 bg-red-50 text-red-700 hover:bg-red-50",
+    suspended: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50",
+  };
+  const icons = {
+    active: CircleCheck,
+    cancelled: CircleX,
+    expired: Clock3,
+    suspended: Clock3,
+  } satisfies Record<LicencaStatus, typeof CircleCheck>;
+  const Icon = icons[status];
+
+  return (
+    <Badge variant="outline" className={styles[status]}>
+      <Icon className="size-3.5" />
+      {formatLicencaStatus(status)}
+    </Badge>
+  );
+}
+
+function LicencaVigenciaBadge({
+  diasRestantes,
+  status,
+}: {
+  diasRestantes: number;
+  status: LicencaVigenciaStatus;
+}) {
+  const styles: Record<LicencaVigenciaStatus, string> = {
+    active:
+      "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50",
+    expired: "border-red-200 bg-red-50 text-red-700 hover:bg-red-50",
+    expiring: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50",
+  };
+  const icons = {
+    active: CircleCheck,
+    expired: Clock3,
+    expiring: Clock3,
+  } satisfies Record<LicencaVigenciaStatus, typeof CircleCheck>;
+  const Icon = icons[status];
+
+  return (
+    <Badge variant="outline" className={styles[status]}>
+      <Icon className="size-3.5" />
+      {formatDaysRemaining(diasRestantes)}
+    </Badge>
+  );
+}
+
+function getTodayIsoDate() {
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+  }).formatToParts(new Date());
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+
+  return `${year}-${month}-${day}`;
+}
+
+function addOneYearIsoDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const nextDate = new Date(Date.UTC(year + 1, month - 1, day));
+
+  if (nextDate.getUTCMonth() !== month - 1) {
+    nextDate.setUTCDate(0);
+  }
+
+  return [
+    nextDate.getUTCFullYear(),
+    String(nextDate.getUTCMonth() + 1).padStart(2, "0"),
+    String(nextDate.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}

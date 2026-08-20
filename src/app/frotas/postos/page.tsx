@@ -1,0 +1,343 @@
+import Link from "next/link";
+import {
+  Building2,
+  ExternalLink,
+  Fuel,
+  KeyRound,
+  MapPin,
+  Pencil,
+  Phone,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
+
+import { FrotasShell } from "@/app/frotas/frotas-shell";
+import { PostoCredenciadoForm } from "@/app/frotas/posto-credenciado-form";
+import { PostoSenhaForm } from "@/app/frotas/posto-senha-form";
+import { PostoStatusButton } from "@/app/frotas/posto-status-button";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { requireUserProfile } from "@/lib/auth-data";
+import { getPostosCredenciadosData } from "@/lib/frotas-data";
+
+export const dynamic = "force-dynamic";
+
+type PageProps = {
+  searchParams: Promise<{
+    prefeitura?: string;
+    q?: string;
+  }>;
+};
+
+export default async function PostosPage({ searchParams }: PageProps) {
+  const profile = await requireUserProfile();
+  const params = await searchParams;
+  const prefeituraId =
+    profile.role === "bdl_admin"
+      ? params.prefeitura
+      : profile.prefeitura_id ?? undefined;
+  const data = await getPostosCredenciadosData({
+    prefeituraId,
+    query: params.q,
+  });
+  const hasActiveFilters = Boolean(params.q?.trim());
+
+  return (
+    <FrotasShell
+      active="postos"
+      actions={
+        <div className="flex w-full min-w-0 items-center justify-end gap-2">
+          <form className="hidden min-w-0 shrink-0 gap-2 xl:flex">
+            <div className="relative min-w-0 w-[320px]">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-9 pl-9"
+                name="q"
+                placeholder="Buscar posto"
+                defaultValue={params.q}
+              />
+            </div>
+            {data.selectedPrefeituraId ? (
+              <input
+                type="hidden"
+                name="prefeitura"
+                value={data.selectedPrefeituraId}
+              />
+            ) : null}
+            {hasActiveFilters ? (
+              <Link
+                href={
+                  data.selectedPrefeituraId
+                    ? `/frotas/postos?prefeitura=${data.selectedPrefeituraId}`
+                    : "/frotas/postos"
+                }
+                className={buttonVariants({
+                  variant: "outline",
+                  className: "h-9 gap-2",
+                })}
+              >
+                <X className="size-4" />
+                Limpar
+              </Link>
+            ) : (
+              <Button type="submit" variant="outline" className="h-9">
+                <Search className="size-4" />
+                Filtrar
+              </Button>
+            )}
+          </form>
+
+          <Dialog>
+            <DialogTrigger
+              className={buttonVariants({
+                className: "h-9 shrink-0 gap-2",
+              })}
+            >
+              <Plus className="size-4" />
+              Novo posto
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-xl">
+              <DialogHeader>
+                <DialogTitle>Novo posto de combustível</DialogTitle>
+              </DialogHeader>
+              <PostoCredenciadoForm
+                prefeituras={data.prefeituras}
+                selectedPrefeituraId={data.selectedPrefeituraId}
+                showPrefeituraField={profile.role === "bdl_admin"}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
+      }
+      icon={Fuel}
+      prefeituras={data.prefeituras}
+      profile={profile}
+      selectedPrefeituraId={data.selectedPrefeituraId}
+      title="Postos de Combustível"
+    >
+      <main className="flex flex-1 flex-col gap-3 p-4">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 items-center justify-center rounded-lg border bg-muted/40">
+                  <Fuel className="size-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <CardTitle>Postos cadastrados</CardTitle>
+                  <CardDescription>
+                    Acessos dos postos credenciados para concluir ordens.
+                  </CardDescription>
+                </div>
+              </div>
+              <Badge variant="outline">{data.postos.length} registro(s)</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {data.postos.length ? (
+              <div className="overflow-hidden rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Posto</TableHead>
+                      <TableHead>Contato</TableHead>
+                      <TableHead>Prefeitura</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-[160px] text-right">
+                        Ações
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.postos.map((posto) => (
+                      <TableRow key={posto.id}>
+                        <TableCell>
+                          <div className="font-medium">{posto.nome}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {posto.cnpj ?? "Sem CNPJ"}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="grid gap-1 text-sm">
+                            <div className="flex items-center gap-2">
+                              <Phone className="size-4 text-muted-foreground" />
+                              {posto.telefone ?? "-"}
+                            </div>
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <MapPin className="size-4" />
+                              {posto.endereco ?? "-"}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{posto.prefeitura_nome ?? "-"}</TableCell>
+                        <TableCell>
+                          <PostoStatusBadge status={posto.status} />
+                        </TableCell>
+                        <TableCell>
+                          <PostoActions
+                            posto={posto}
+                            prefeituras={data.prefeituras}
+                            selectedPrefeituraId={data.selectedPrefeituraId}
+                            showPrefeituraField={profile.role === "bdl_admin"}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border bg-muted/20 p-8 text-center">
+                <div className="flex size-12 items-center justify-center rounded-lg border bg-background">
+                  <Building2 className="size-6 text-muted-foreground" />
+                </div>
+                <h3 className="mt-4 text-base font-semibold">
+                  Nenhum posto cadastrado
+                </h3>
+                <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                  Cadastre os postos credenciados da prefeitura para permitir a
+                  conclusão das ordens de abastecimento.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </main>
+    </FrotasShell>
+  );
+}
+
+function PostoActions({
+  posto,
+  prefeituras,
+  selectedPrefeituraId,
+  showPrefeituraField,
+}: {
+  posto: Awaited<ReturnType<typeof getPostosCredenciadosData>>["postos"][number];
+  prefeituras: Awaited<ReturnType<typeof getPostosCredenciadosData>>["prefeituras"];
+  selectedPrefeituraId?: string;
+  showPrefeituraField: boolean;
+}) {
+  return (
+    <div className="flex justify-end gap-1">
+      <Dialog>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <DialogTrigger
+                className={buttonVariants({
+                  variant: "ghost",
+                  size: "icon-sm",
+                })}
+                aria-label="Editar posto"
+              >
+                <Pencil className="size-4" />
+              </DialogTrigger>
+            }
+          />
+          <TooltipContent>Editar posto</TooltipContent>
+        </Tooltip>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Editar posto</DialogTitle>
+          </DialogHeader>
+          <PostoCredenciadoForm
+            posto={posto}
+            prefeituras={prefeituras}
+            selectedPrefeituraId={selectedPrefeituraId}
+            showPrefeituraField={showPrefeituraField}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <DialogTrigger
+                className={buttonVariants({
+                  variant: "ghost",
+                  size: "icon-sm",
+                })}
+                aria-label="Redefinir senha"
+              >
+                <KeyRound className="size-4" />
+              </DialogTrigger>
+            }
+          />
+          <TooltipContent>Redefinir senha</TooltipContent>
+        </Tooltip>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Redefinir senha</DialogTitle>
+          </DialogHeader>
+          <PostoSenhaForm postoId={posto.id} postoNome={posto.nome} />
+        </DialogContent>
+      </Dialog>
+
+      <Link
+        href="/frotas/posto"
+        className={buttonVariants({
+          variant: "ghost",
+          size: "icon-sm",
+        })}
+        aria-label="Abrir portal do posto"
+        title="Abrir portal do posto"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <ExternalLink className="size-4" />
+      </Link>
+
+      <PostoStatusButton postoId={posto.id} status={posto.status} />
+    </div>
+  );
+}
+
+function PostoStatusBadge({
+  status,
+}: {
+  status: "active" | "inactive";
+}) {
+  return (
+    <Badge
+      variant="outline"
+      className={
+        status === "active"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
+          : "border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100"
+      }
+    >
+      {status === "active" ? "Ativo" : "Inativo"}
+    </Badge>
+  );
+}

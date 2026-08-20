@@ -1,0 +1,377 @@
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+
+export type UsuarioRole = "bdl_admin" | "municipal_admin" | "municipal_user";
+
+export type Usuario = {
+  ativo: boolean;
+  cpf: string | null;
+  created_at: string;
+  email: string | null;
+  id: string;
+  nome: string;
+  prefeitura_id: string | null;
+  prefeitura_nome: string | null;
+  role: UsuarioRole;
+  username: string | null;
+};
+
+type UsuarioRow = {
+  ativo: boolean;
+  cpf: string | null;
+  created_at: string;
+  email: string | null;
+  id: string;
+  nome: string;
+  prefeitura_id: string | null;
+  prefeituras: {
+    nome: string;
+  } | null;
+  role: UsuarioRole;
+  username: string | null;
+};
+
+export type UsuarioPrefeituraOption = {
+  id: string;
+  nome: string;
+};
+
+export type UsuarioPermissao = {
+  chave: string;
+  descricao: string | null;
+  id: string;
+  nome: string;
+  selecionada: boolean;
+};
+
+export type UsuarioModuloAcesso = {
+  id: string;
+  nome: string;
+  permissoes: UsuarioPermissao[];
+  selecionado: boolean;
+  slug: string;
+};
+
+type LicencaModuloRow = {
+  modulo_id: string;
+  modulos: {
+    id: string;
+    nome: string;
+    slug: string;
+  } | null;
+};
+
+type PermissaoRow = {
+  chave: string;
+  descricao: string | null;
+  id: string;
+  modulo_id: string;
+  nome: string;
+};
+
+type UsuarioModuloRow = {
+  modulo_id: string;
+};
+
+type UsuarioPermissaoRow = {
+  permissao_id: string;
+};
+
+export async function getUsuarios(params?: {
+  prefeituraId?: string;
+  query?: string;
+  role?: string;
+  status?: string;
+}) {
+  const supabase = createSupabaseServerClient();
+  const query = buildUsuariosQuery(supabase, params, true);
+
+  const { data, error } = await query;
+
+  if (error) {
+    if (isMissingProfileAccessColumnError(error.message)) {
+      const fallbackResult = await buildUsuariosQuery(supabase, params, false);
+
+      if (fallbackResult.error) {
+        throw new Error(fallbackResult.error.message);
+      }
+
+      return mapUsuariosRows(
+        (fallbackResult.data ?? []) as unknown as UsuarioRow[]
+      );
+    }
+
+    throw new Error(error.message);
+  }
+
+  const rows = mapUsuariosRows((data ?? []) as unknown as UsuarioRow[]);
+
+  if (!params?.query) {
+    return rows;
+  }
+
+  const normalizedQuery = params.query.toLowerCase();
+  return rows.filter((usuario) =>
+    [
+      usuario.nome,
+      usuario.cpf,
+      formatCpf(usuario.cpf),
+      usuario.email,
+      usuario.username,
+      usuario.prefeitura_nome,
+      formatUsuarioRole(usuario.role),
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+}
+
+function buildUsuariosQuery(
+  supabase: ReturnType<typeof createSupabaseServerClient>,
+  params: {
+    prefeituraId?: string;
+    query?: string;
+    role?: string;
+    status?: string;
+  } | undefined,
+  includeAccessFields: boolean
+) {
+  const select = includeAccessFields
+    ? "id,nome,email,username,cpf,role,prefeitura_id,ativo,created_at,prefeituras(nome)"
+    : "id,nome,role,prefeitura_id,created_at,prefeituras(nome)";
+  let query = supabase.from("perfis").select(select).order("created_at", {
+    ascending: false,
+  });
+
+  if (params?.role && params.role !== "all") {
+    query = query.eq("role", params.role);
+  }
+
+  if (includeAccessFields && params?.status === "active") {
+    query = query.eq("ativo", true);
+  }
+
+  if (includeAccessFields && params?.status === "inactive") {
+    query = query.eq("ativo", false);
+  }
+
+  if (params?.prefeituraId) {
+    query = query.eq("prefeitura_id", params.prefeituraId);
+  }
+
+  return query;
+}
+
+function mapUsuariosRows(rows: UsuarioRow[]) {
+  return rows.map((usuario) => ({
+    ativo: usuario.ativo ?? true,
+    cpf: usuario.cpf ?? null,
+    created_at: usuario.created_at,
+    email: usuario.email ?? null,
+    id: usuario.id,
+    nome: usuario.nome,
+    prefeitura_id: usuario.prefeitura_id,
+    prefeitura_nome: usuario.prefeituras?.nome ?? null,
+    role: usuario.role,
+    username: usuario.username ?? null,
+  }));
+}
+
+export async function getUsuarioFormOptions() {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("prefeituras")
+    .select("id,nome")
+    .eq("status", "active")
+    .order("nome");
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    prefeituras: (data ?? []) as UsuarioPrefeituraOption[],
+  };
+}
+
+export async function getUsuariosAccessMap(usuarios: Usuario[]) {
+  const municipalUsers = usuarios.filter((usuario) => usuario.prefeitura_id);
+  const entries = await Promise.all(
+    municipalUsers.map(async (usuario) => [
+      usuario.id,
+      await getUsuarioAccessOptions(usuario),
+    ])
+  );
+
+  return Object.fromEntries(entries) as Record<string, UsuarioModuloAcesso[]>;
+}
+
+export async function getUsuarioAccessOptions(usuario: Usuario) {
+  if (!usuario.prefeitura_id) {
+    return [];
+  }
+
+  const supabase = createSupabaseServerClient();
+  const [licencasResult, usuarioModulosResult, usuarioPermissoesResult] =
+    await Promise.all([
+      supabase
+        .from("licencas")
+        .select("modulo_id,modulos(id,nome,slug)")
+        .eq("prefeitura_id", usuario.prefeitura_id)
+        .eq("status", "active")
+        .order("created_at", { ascending: false }),
+      supabase.from("usuario_modulos").select("modulo_id").eq("usuario_id", usuario.id),
+      supabase
+        .from("usuario_permissoes")
+        .select("permissao_id")
+        .eq("usuario_id", usuario.id),
+    ]);
+
+  if (licencasResult.error) {
+    if (isMissingPermissionTableError(licencasResult.error.message)) {
+      return [];
+    }
+
+    throw new Error(licencasResult.error.message);
+  }
+
+  if (usuarioModulosResult.error) {
+    if (isMissingPermissionTableError(usuarioModulosResult.error.message)) {
+      return [];
+    }
+
+    throw new Error(usuarioModulosResult.error.message);
+  }
+
+  if (usuarioPermissoesResult.error) {
+    if (isMissingPermissionTableError(usuarioPermissoesResult.error.message)) {
+      return [];
+    }
+
+    throw new Error(usuarioPermissoesResult.error.message);
+  }
+
+  const licencas = (licencasResult.data ?? []) as unknown as LicencaModuloRow[];
+  const moduloIds = licencas
+    .map((licenca) => licenca.modulo_id)
+    .filter((id): id is string => Boolean(id));
+
+  if (!moduloIds.length) {
+    return [];
+  }
+
+  const permissoesResult = await supabase
+    .from("permissoes")
+    .select("id,modulo_id,chave,nome,descricao")
+    .in("modulo_id", moduloIds)
+    .order("chave");
+
+  if (permissoesResult.error) {
+    if (isMissingPermissionTableError(permissoesResult.error.message)) {
+      return [];
+    }
+
+    throw new Error(permissoesResult.error.message);
+  }
+
+  const selectedModuloIds = new Set(
+    ((usuarioModulosResult.data ?? []) as UsuarioModuloRow[]).map(
+      (item) => item.modulo_id
+    )
+  );
+  const selectedPermissaoIds = new Set(
+    ((usuarioPermissoesResult.data ?? []) as UsuarioPermissaoRow[]).map(
+      (item) => item.permissao_id
+    )
+  );
+  const permissoes = (permissoesResult.data ?? []) as PermissaoRow[];
+  const allowedPermissionKeys = getAllowedPermissionKeys(usuario.role);
+
+  return licencas
+    .filter((licenca) => licenca.modulos)
+    .map((licenca) => ({
+      id: licenca.modulo_id,
+      nome: licenca.modulos?.nome ?? "-",
+      permissoes: permissoes
+        .filter((permissao) => permissao.modulo_id === licenca.modulo_id)
+        .filter((permissao) => allowedPermissionKeys.has(permissao.chave))
+        .map((permissao) => ({
+          chave: permissao.chave,
+          descricao: permissao.descricao,
+          id: permissao.id,
+          nome: permissao.nome,
+          selecionada: selectedPermissaoIds.has(permissao.id),
+        })),
+      selecionado: selectedModuloIds.has(licenca.modulo_id),
+      slug: licenca.modulos?.slug ?? "-",
+    }));
+}
+
+function getAllowedPermissionKeys(role: UsuarioRole) {
+  if (role === "municipal_admin" || role === "municipal_user") {
+    return new Set([
+      "vehicles.create",
+      "vehicles.update",
+      "vehicles.delete",
+      "vehicles.manage",
+      "vehicles.read",
+      "expirations.manage",
+      "expirations.read",
+      "maintenance.create",
+      "maintenance.update",
+      "maintenance.complete",
+      "maintenance.cancel",
+      "maintenance.read",
+      "fuel.create",
+      "fuel.complete",
+      "fuel.cancel",
+      "fuel.manage",
+      "fuel.read",
+      "fuel_stations.manage",
+      "fuel_stations.read",
+    ]);
+  }
+
+  return new Set<string>();
+}
+
+export function formatUsuarioRole(role: UsuarioRole) {
+  const labels: Record<UsuarioRole, string> = {
+    bdl_admin: "Administrador",
+    municipal_admin: "Administrador Municipal",
+    municipal_user: "Usuário municipal",
+  };
+
+  return labels[role];
+}
+
+export function formatUsuarioStatus(ativo: boolean) {
+  return ativo ? "Ativo" : "Inativo";
+}
+
+export function formatCpf(value: string | null) {
+  const digits = value?.replace(/\D/g, "") ?? "";
+
+  if (digits.length !== 11) {
+    return value ?? "-";
+  }
+
+  return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+}
+
+function isMissingProfileAccessColumnError(message: string) {
+  return (
+    message.includes("perfis.email") ||
+    message.includes("perfis.username") ||
+    message.includes("perfis.cpf") ||
+    message.includes("perfis.ativo")
+  );
+}
+
+function isMissingPermissionTableError(message: string) {
+  return (
+    message.includes("permissoes") ||
+    message.includes("usuario_modulos") ||
+    message.includes("usuario_permissoes")
+  );
+}
