@@ -11,7 +11,13 @@ import {
 import type { CurrentUserProfile } from "@/lib/auth-data";
 
 type AdminShellProps = {
-  active: "dashboard" | "prefeituras" | "licencas" | "usuarios" | "modulos";
+  active:
+    | "dashboard"
+    | "prefeituras"
+    | "licencas"
+    | "usuarios"
+    | "modulos"
+    | "integracoes";
   actions?: ReactNode;
   children: ReactNode;
   icon?: LucideIcon;

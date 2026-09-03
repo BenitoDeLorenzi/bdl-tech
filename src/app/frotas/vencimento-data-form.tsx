@@ -36,7 +36,7 @@ export function VencimentoDataForm({ vencimento }: VencimentoDataFormProps) {
   useEffect(() => {
     if (state.success) {
       toast.success(state.success, {
-        id: `vencimento-update-${vencimento.id}`,
+        id: `debito-update-${vencimento.id}`,
       });
       router.refresh();
       closeParentDialog(formRef.current);
@@ -70,12 +70,12 @@ export function VencimentoDataForm({ vencimento }: VencimentoDataFormProps) {
       <Controller
         control={form.control}
         name="data_vencimento"
-        rules={{ required: "Informe a data do vencimento." }}
+        rules={{ required: "Informe a data do débito." }}
         render={({ field, fieldState }) => (
           <DatePickerInput
             id={`data_vencimento_${vencimento.id}`}
             name={field.name}
-            label="Data do vencimento"
+            label="Data do débito"
             value={field.value}
             onValueChange={field.onChange}
             disabled={actionPending}
@@ -92,7 +92,7 @@ export function VencimentoDataForm({ vencimento }: VencimentoDataFormProps) {
           ) : (
             <CheckCircle2 className="size-4" />
           )}
-          {actionPending ? "Salvando..." : "Salvar vencimento"}
+          {actionPending ? "Salvando..." : "Salvar débito"}
         </Button>
       </DialogFooter>
     </form>

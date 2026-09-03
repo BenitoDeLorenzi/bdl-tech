@@ -6,6 +6,7 @@ import {
   ExternalLink,
   KeyRound,
   LayoutDashboard,
+  PlugZap,
   Settings,
   ShieldCheck,
   Users,
@@ -29,7 +30,13 @@ import {
 import type { CurrentUserProfile } from "@/lib/auth-data";
 
 type AdminSidebarProps = {
-  active: "dashboard" | "prefeituras" | "licencas" | "usuarios" | "modulos";
+  active:
+    | "dashboard"
+    | "prefeituras"
+    | "licencas"
+    | "usuarios"
+    | "modulos"
+    | "integracoes";
   profile: CurrentUserProfile;
 };
 
@@ -45,6 +52,7 @@ const navModulos = [
 ] as const;
 
 const navAdministracao = [
+  { key: "integracoes", label: "Integrações", href: "/integracoes/plexi", icon: PlugZap },
   { key: "modulos", label: "Catálogo de módulos", href: "/modulos", icon: ClipboardList },
   { key: "configuracoes", label: "Configurações", href: "#", icon: Settings },
   { key: "seguranca", label: "Segurança", href: "#", icon: ShieldCheck },

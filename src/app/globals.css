@@ -128,3 +128,94 @@
     @apply font-sans;
   }
 }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 8mm;
+  }
+
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  [data-slot="sidebar"],
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"],
+  [data-slot="sidebar-rail"],
+  [data-sidebar="trigger"] {
+    display: none !important;
+  }
+
+  [data-slot="sidebar-wrapper"],
+  [data-slot="sidebar-inset"] {
+    display: block !important;
+    width: 100% !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  [data-report-print-document] {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    font-size: 9px !important;
+    line-height: 1.25 !important;
+  }
+
+  [data-report-print-document] [data-slot="card"] {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: white !important;
+  }
+
+  [data-report-print-document] [data-slot="card-header"],
+  [data-report-print-document] [data-slot="card-content"] {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  [data-report-print-document] [data-slot="table-container"] {
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  [data-report-print-document] table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+    font-size: 8px !important;
+    line-height: 1.15 !important;
+  }
+
+  [data-report-print-document] tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  [data-report-print-document] th,
+  [data-report-print-document] td {
+    height: auto !important;
+    padding: 3px 4px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    vertical-align: top !important;
+  }
+
+  [data-report-print-document] [data-slot="badge"] {
+    height: auto !important;
+    padding: 1px 4px !important;
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+  }
+}

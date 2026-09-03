@@ -11,8 +11,8 @@ type VencimentosToastsProps = {
 export function VencimentosToasts({ error, renewed }: VencimentosToastsProps) {
   useEffect(() => {
     if (renewed) {
-      toast.success("Vencimento renovado por mais 1 ano.", {
-        id: "vencimento-renewed",
+      toast.success("Débito renovado por mais 1 ano.", {
+        id: "debito-renewed",
       });
     }
   }, [renewed]);
@@ -20,7 +20,7 @@ export function VencimentosToasts({ error, renewed }: VencimentosToastsProps) {
   useEffect(() => {
     if (error) {
       toast.error(error, {
-        id: "vencimentos-error",
+        id: "debitos-error",
       });
     }
   }, [error]);

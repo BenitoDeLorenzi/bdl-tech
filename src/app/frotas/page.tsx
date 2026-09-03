@@ -62,9 +62,17 @@ const vehicleStatusMeta: Record<
     badge: "border-zinc-200 bg-zinc-50 text-zinc-700",
     label: "Inativos",
   },
+  consult_error: {
+    badge: "border-red-200 bg-red-50 text-red-700",
+    label: "Falha na consulta",
+  },
   maintenance: {
     badge: "border-amber-200 bg-amber-50 text-amber-700",
     label: "Em manutenção",
+  },
+  processing: {
+    badge: "border-sky-200 bg-sky-50 text-sky-700",
+    label: "Processando",
   },
 };
 
@@ -115,7 +123,7 @@ export default async function FrotasDashboardPage({ searchParams }: PageProps) {
   const thirtyDaysAgo = new Date(now);
   thirtyDaysAgo.setDate(now.getDate() - 30);
 
-  const vencimentosCriticos = data.vencimentos
+  const debitosCriticos = data.vencimentos
     .filter((vencimento) => vencimento.status !== "paid")
     .filter((vencimento) => vencimento.dias_restantes <= 30)
     .sort((a, b) => a.dias_restantes - b.dias_restantes)
@@ -170,6 +178,12 @@ export default async function FrotasDashboardPage({ searchParams }: PageProps) {
   const inactiveVehicles = data.veiculos.filter(
     (veiculo) => veiculo.status === "inactive"
   ).length;
+  const processingVehicles = data.veiculos.filter(
+    (veiculo) => veiculo.status === "processing"
+  ).length;
+  const consultErrorVehicles = data.veiculos.filter(
+    (veiculo) => veiculo.status === "consult_error"
+  ).length;
   const fleetAvailability =
     totalVeiculos > 0 ? Math.round((activeVehicles / totalVeiculos) * 100) : 0;
 
@@ -222,7 +236,7 @@ export default async function FrotasDashboardPage({ searchParams }: PageProps) {
           />
           <MetricCard
             icon={CalendarClock}
-            label="Vencendo em 30 dias"
+            label="Débitos em 30 dias"
             note={`${data.metricas.vencidos} vencido(s)`}
             value={data.metricas.vencendo.toString()}
             variant={data.metricas.vencidos > 0 ? "danger" : "default"}
@@ -266,20 +280,30 @@ export default async function FrotasDashboardPage({ searchParams }: PageProps) {
                 status="inactive"
                 total={totalVeiculos}
               />
+              <FleetStatusRow
+                count={processingVehicles}
+                status="processing"
+                total={totalVeiculos}
+              />
+              <FleetStatusRow
+                count={consultErrorVehicles}
+                status="consult_error"
+                total={totalVeiculos}
+              />
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Vencimentos críticos</CardTitle>
+              <CardTitle>Débitos críticos</CardTitle>
               <CardDescription>
                 IPVA, licenciamento e seguro vencidos ou próximos do prazo.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {vencimentosCriticos.length ? (
+              {debitosCriticos.length ? (
                 <div className="space-y-2">
-                  {vencimentosCriticos.map((vencimento) => (
+                  {debitosCriticos.map((vencimento) => (
                     <VencimentoRow
                       key={vencimento.id}
                       vencimento={vencimento}
@@ -289,7 +313,7 @@ export default async function FrotasDashboardPage({ searchParams }: PageProps) {
               ) : (
                 <EmptyState
                   icon={CheckCircle2}
-                  text="Nenhum vencimento crítico para os próximos 30 dias."
+                  text="Nenhum débito crítico para os próximos 30 dias."
                 />
               )}
             </CardContent>
@@ -460,7 +484,11 @@ function FleetStatusRow({
               ? "bg-emerald-500"
               : status === "maintenance"
                 ? "bg-amber-500"
-                : "bg-zinc-400"
+                : status === "processing"
+                  ? "bg-sky-500"
+                  : status === "consult_error"
+                    ? "bg-red-500"
+                    : "bg-zinc-400"
           )}
           style={{ width: `${percentage}%` }}
         />

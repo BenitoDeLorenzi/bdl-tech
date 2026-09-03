@@ -2,7 +2,7 @@
 
 import { startTransition, useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { currency } from "remask";
 import { toast } from "sonner";
@@ -37,6 +37,7 @@ import { DatePickerInput } from "./date-picker-input";
 type LicencaFormProps = {
   defaultFim?: string;
   defaultInicio?: string;
+  defaultPrefeituraId?: string;
   licenca?: Licenca;
   modulos: LicencaModuloOption[];
   prefeituras: LicencaPrefeituraOption[];
@@ -61,6 +62,7 @@ const statusOptions = [
 export function LicencaForm({
   defaultFim,
   defaultInicio,
+  defaultPrefeituraId,
   licenca,
   modulos,
   prefeituras,
@@ -77,7 +79,7 @@ export function LicencaForm({
       fim: licenca?.fim ?? defaultFim ?? "",
       inicio: licenca?.inicio ?? defaultInicio ?? "",
       modulo_id: licenca?.modulo_id ?? null,
-      prefeitura_id: licenca?.prefeitura_id ?? null,
+      prefeitura_id: licenca?.prefeitura_id ?? defaultPrefeituraId ?? null,
       status: licenca?.status ?? "active",
       valor_anual: licenca?.valor_anual ?? null,
     },
@@ -93,6 +95,12 @@ export function LicencaForm({
     label: option.label,
     value: option.value,
   }));
+  const valorAnual = useWatch({
+    control: form.control,
+    name: "valor_anual",
+  });
+  const valorMensal =
+    valorAnual !== null ? Math.round((valorAnual / 12) * 100) / 100 : null;
 
   useEffect(() => {
     if (state.success) {
@@ -106,7 +114,7 @@ export function LicencaForm({
           fim: defaultFim ?? "",
           inicio: defaultInicio ?? "",
           modulo_id: null,
-          prefeitura_id: null,
+          prefeitura_id: defaultPrefeituraId ?? null,
           status: "active",
           valor_anual: null,
         });
@@ -114,7 +122,15 @@ export function LicencaForm({
 
       closeParentDialog(formRef.current);
     }
-  }, [defaultFim, defaultInicio, form, isEditing, router, state.success]);
+  }, [
+    defaultFim,
+    defaultInicio,
+    defaultPrefeituraId,
+    form,
+    isEditing,
+    router,
+    state.success,
+  ]);
 
   function submitForm(values: LicencaFormValues) {
     const formData = new FormData();
@@ -271,7 +287,9 @@ export function LicencaForm({
               }}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="valor_anual">Valor anual</FieldLabel>
+                  <FieldLabel htmlFor="valor_anual">
+                    Valor anual do contrato
+                  </FieldLabel>
                   <CurrencyInput
                     id="valor_anual"
                     name={field.name}
@@ -280,6 +298,9 @@ export function LicencaForm({
                     disabled={actionPending}
                     invalid={fieldState.invalid}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Cobrança mensal: 12x de {formatCurrency(valorMensal)}.
+                  </p>
                   <FieldError errors={[fieldState.error]} />
                 </Field>
               )}
@@ -397,4 +418,15 @@ function CurrencyInput({
       />
     </>
   );
+}
+
+function formatCurrency(value: number | null) {
+  if (value === null) {
+    return "R$ 0,00";
+  }
+
+  return new Intl.NumberFormat("pt-BR", {
+    currency: "BRL",
+    style: "currency",
+  }).format(value);
 }

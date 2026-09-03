@@ -1,6 +1,11 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
-export type VeiculoStatus = "active" | "maintenance" | "inactive";
+export type VeiculoStatus =
+  | "active"
+  | "maintenance"
+  | "inactive"
+  | "processing"
+  | "consult_error";
 export type VencimentoStatus = "pending" | "paid" | "expired";
 export type VencimentoTipo = "seguro" | "ipva" | "licenciamento";
 export type PagamentoStatus = "pending" | "partial" | "paid";
@@ -29,37 +34,71 @@ export type FrotaPostoCredenciado = {
 };
 
 export type FrotaVeiculo = {
+  abastecimentos: FrotaVeiculoAbastecimento[];
   anexos: FrotaVeiculoAnexo[];
   ano: number;
+  ano_fabricacao: number | null;
+  ano_modelo: number | null;
+  capacidade: string | null;
+  carroceria: string | null;
+  categoria: string | null;
+  chassi: string | null;
+  cilindrada: string | null;
+  cmt: string | null;
   created_at: string;
+  cor: string | null;
+  data_aquisicao: string | null;
+  data_documento: string | null;
+  eixos: string | null;
+  exercicio: number | null;
   id: string;
+  licenciado: string | null;
+  local_registro: string | null;
+  lotacao: string | null;
+  lugares: string | null;
   marca: string;
   modelo: string;
+  motor: string | null;
+  municipio_emplacamento: string | null;
   observacoes: string | null;
   placa: string;
+  placa_anterior: string | null;
+  potencia: string | null;
   prefeitura_id: string;
   prefeitura_nome: string;
   prefixo: string;
+  principal_condutor: string | null;
+  proprietario_anterior: string | null;
+  proprietario_atual: string | null;
+  proprietario_documento: string | null;
   quilometragem: number | null;
   renavam: string | null;
+  restricao_venda: string | null;
+  restricoes: string | null;
   secretaria: string;
+  situacao_veicular: string | null;
   status: VeiculoStatus;
   tipo: string;
   versao: string | null;
   combustivel: string | null;
+  especie: string | null;
   foto_path: string | null;
   foto_url: string | null;
   manutencoes: FrotaVeiculoManutencao[];
+  origem_dados: string | null;
   vencimentos: Partial<Record<VencimentoTipo, string>>;
 };
 
 export type FrotaVencimento = {
   ano: number | null;
   data_vencimento: string;
+  descricao: string | null;
   dias_restantes: number;
+  external_ref: string | null;
   id: string;
   marca: string;
   modelo: string;
+  origem: string;
   placa: string;
   prefixo: string;
   prefeitura_id: string;
@@ -70,6 +109,7 @@ export type FrotaVencimento = {
   ultimo_pagamento: string | null;
   ultimo_pagamento_status: PagamentoStatus | null;
   ultimo_pagamento_valor: number | null;
+  valor: number | null;
   veiculo_id: string;
 };
 
@@ -94,6 +134,40 @@ export type FrotaDebitoConsulta = {
   id: string;
   id_consult: string | null;
   status: "pending" | "processing" | "success" | "error" | "disabled";
+};
+
+export type FrotaMultaVeicular = {
+  data_infracao: string | null;
+  descricao: string | null;
+  hora: string | null;
+  id: string;
+  local_complemento: string | null;
+  numero_auto: string;
+  origem: "historico" | "manual" | "pagar";
+  situacao: string | null;
+  valor: number;
+};
+
+export type FrotaRecursoInfracao = {
+  detalhamento_infracao: string | null;
+  id: string;
+  numero_auto: string | null;
+  processo: string | null;
+  resultado_processo: string | null;
+};
+
+export type FrotaProcessoVeicular = {
+  final_em: string | null;
+  id: string;
+  inicio_em: string | null;
+  interessado: string | null;
+  processo: string | null;
+  servicos: Array<{
+    data?: string;
+    hora?: string;
+    nome?: string;
+  }>;
+  situacao: string | null;
 };
 
 export type FrotaAbastecimento = {
@@ -138,6 +212,34 @@ export type FrotaAbastecimento = {
   valor_total: number | null;
   veiculo_id: string;
 };
+
+export type FrotaVeiculoAbastecimento = Pick<
+  FrotaAbastecimento,
+  | "arla_incluso"
+  | "arla_litros"
+  | "arla_valor_litro"
+  | "arla_valor_total"
+  | "completed_at"
+  | "combustivel"
+  | "created_at"
+  | "data_abastecimento"
+  | "concluido_por"
+  | "emitido_por"
+  | "expires_at"
+  | "id"
+  | "litros"
+  | "motorista"
+  | "numero_nota_fiscal"
+  | "numero_ordem"
+  | "posto_id"
+  | "posto_nome"
+  | "print_count"
+  | "quilometragem"
+  | "status"
+  | "valor_litro"
+  | "valor_total"
+  | "veiculo_id"
+>;
 
 export type ManutencaoStatus = "open" | "completed" | "cancelled";
 
@@ -201,9 +303,13 @@ type VeiculoRow = Omit<FrotaVeiculo, "prefeitura_nome"> & {
 
 type VencimentoRow = {
   data_vencimento: string;
+  descricao: string | null;
+  external_ref: string | null;
   id: string;
+  origem: string | null;
   status: VencimentoStatus;
   tipo: VencimentoTipo;
+  valor: number | null;
   veiculo_id: string;
   frota_veiculos: {
     ano: number;
@@ -263,6 +369,15 @@ type AbastecimentoAnexoRow = FrotaAbastecimentoAnexo & {
   abastecimento_id: string;
 };
 
+type VeiculoAbastecimentoRow = Omit<
+  FrotaVeiculoAbastecimento,
+  "posto_nome"
+> & {
+  frota_postos_credenciados: {
+    nome: string;
+  } | null;
+};
+
 export async function getFrotasData(params?: {
   prefeituraId?: string;
   query?: string;
@@ -288,13 +403,13 @@ export async function getFrotasData(params?: {
   let veiculosQuery = supabase
     .from("frota_veiculos")
     .select(
-      "id,prefeitura_id,placa,prefixo,marca,modelo,ano,tipo,versao,combustivel,secretaria,quilometragem,renavam,status,observacoes,foto_url,foto_path,created_at,prefeituras(nome)"
+      "id,prefeitura_id,placa,placa_anterior,prefixo,marca,modelo,ano,exercicio,ano_fabricacao,ano_modelo,lugares,lotacao,tipo,cor,combustivel,carroceria,categoria,capacidade,potencia,cilindrada,motor,cmt,eixos,chassi,data_aquisicao,data_documento,municipio_emplacamento,local_registro,situacao_veicular,proprietario_atual,proprietario_documento,proprietario_anterior,restricao_venda,restricoes,licenciado,origem_dados,principal_condutor,especie,versao,secretaria,quilometragem,renavam,status,observacoes,foto_url,foto_path,created_at,prefeituras(nome)"
     )
     .order("created_at", { ascending: false });
 
   let vencimentosQuery = supabase
     .from("frota_vencimentos")
-    .select("id,veiculo_id,tipo,data_vencimento,status,frota_veiculos(prefeitura_id,placa,prefixo,marca,modelo,ano)")
+    .select("id,veiculo_id,tipo,data_vencimento,status,descricao,valor,origem,external_ref,frota_veiculos(prefeitura_id,placa,prefixo,marca,modelo,ano)")
     .order("data_vencimento", { ascending: true });
 
   if (selectedPrefeituraId && !params?.veiculoId) {
@@ -389,11 +504,13 @@ export async function getFrotasData(params?: {
   const veiculoIds = ((veiculosResult.data ?? []) as unknown as VeiculoRow[]).map(
     (veiculo) => veiculo.id
   );
+  const abastecimentosByVeiculo = new Map<string, FrotaVeiculoAbastecimento[]>();
   const anexosByVeiculo = new Map<string, FrotaVeiculoAnexo[]>();
   const manutencoesByVeiculo = new Map<string, FrotaVeiculoManutencao[]>();
 
   if (veiculoIds.length) {
-    const [anexosResult, manutencoesResult] = await Promise.all([
+    const [anexosResult, manutencoesResult, abastecimentosResult] =
+      await Promise.all([
       supabase
         .from("frota_veiculo_anexos")
         .select("id,veiculo_id,file_name,file_path,file_type,file_size,created_at")
@@ -406,6 +523,14 @@ export async function getFrotasData(params?: {
         )
         .in("veiculo_id", veiculoIds)
         .order("data_entrada", { ascending: false })
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("frota_abastecimentos")
+        .select(
+          "id,veiculo_id,posto_id,numero_ordem,data_abastecimento,motorista,combustivel,quilometragem,litros,valor_litro,valor_total,arla_incluso,arla_litros,arla_valor_litro,arla_valor_total,status,emitido_por,concluido_por,numero_nota_fiscal,completed_at,created_at,expires_at,print_count,frota_postos_credenciados(nome)"
+        )
+        .in("veiculo_id", veiculoIds)
+        .order("data_abastecimento", { ascending: false })
         .order("created_at", { ascending: false }),
     ]);
 
@@ -442,31 +567,78 @@ export async function getFrotasData(params?: {
         manutencoesByVeiculo.set(manutencao.veiculo_id, current);
       });
     }
+
+    if (!abastecimentosResult.error) {
+      (
+        (abastecimentosResult.data ?? []) as unknown as VeiculoAbastecimentoRow[]
+      ).forEach((abastecimento) => {
+        const current = abastecimentosByVeiculo.get(abastecimento.veiculo_id) ?? [];
+        const { frota_postos_credenciados, ...baseAbastecimento } =
+          abastecimento;
+
+        current.push({
+          ...baseAbastecimento,
+          posto_nome: frota_postos_credenciados?.nome ?? null,
+        });
+        abastecimentosByVeiculo.set(abastecimento.veiculo_id, current);
+      });
+    }
   }
 
   let veiculos = ((veiculosResult.data ?? []) as unknown as VeiculoRow[]).map(
     (veiculo) => ({
+      abastecimentos: abastecimentosByVeiculo.get(veiculo.id) ?? [],
       anexos: anexosByVeiculo.get(veiculo.id) ?? [],
       ano: veiculo.ano,
+      ano_fabricacao: veiculo.ano_fabricacao,
+      ano_modelo: veiculo.ano_modelo,
+      capacidade: veiculo.capacidade,
+      carroceria: veiculo.carroceria,
+      categoria: veiculo.categoria,
+      chassi: veiculo.chassi,
+      cilindrada: veiculo.cilindrada,
+      cmt: veiculo.cmt,
       created_at: veiculo.created_at,
+      cor: veiculo.cor,
+      data_aquisicao: veiculo.data_aquisicao,
+      data_documento: veiculo.data_documento,
+      eixos: veiculo.eixos,
+      exercicio: veiculo.exercicio,
       id: veiculo.id,
+      licenciado: veiculo.licenciado,
+      local_registro: veiculo.local_registro,
+      lotacao: veiculo.lotacao,
+      lugares: veiculo.lugares,
       marca: veiculo.marca,
       modelo: veiculo.modelo,
+      motor: veiculo.motor,
+      municipio_emplacamento: veiculo.municipio_emplacamento,
       observacoes: veiculo.observacoes,
       placa: veiculo.placa,
+      placa_anterior: veiculo.placa_anterior,
+      potencia: veiculo.potencia,
       prefeitura_id: veiculo.prefeitura_id,
       prefeitura_nome: veiculo.prefeituras?.nome ?? "-",
       prefixo: veiculo.prefixo,
+      principal_condutor: veiculo.principal_condutor,
+      proprietario_anterior: veiculo.proprietario_anterior,
+      proprietario_atual: veiculo.proprietario_atual,
+      proprietario_documento: veiculo.proprietario_documento,
       quilometragem: veiculo.quilometragem,
       renavam: veiculo.renavam,
+      restricao_venda: veiculo.restricao_venda,
+      restricoes: veiculo.restricoes,
       secretaria: veiculo.secretaria,
+      situacao_veicular: veiculo.situacao_veicular,
       status: veiculo.status,
       tipo: veiculo.tipo,
       versao: veiculo.versao,
       combustivel: veiculo.combustivel,
+      especie: veiculo.especie,
       foto_path: veiculo.foto_path,
       foto_url: veiculo.foto_url,
       manutencoes: manutencoesByVeiculo.get(veiculo.id) ?? [],
+      origem_dados: veiculo.origem_dados,
       vencimentos: vencimentoDatesByVeiculo.get(veiculo.id) ?? {},
     })
   );
@@ -482,6 +654,15 @@ export async function getFrotasData(params?: {
         veiculo.tipo,
         veiculo.versao,
         veiculo.combustivel,
+        veiculo.cor,
+        veiculo.categoria,
+        veiculo.chassi,
+        veiculo.placa_anterior,
+        veiculo.municipio_emplacamento,
+        veiculo.local_registro,
+        veiculo.situacao_veicular,
+        veiculo.licenciado,
+        veiculo.proprietario_atual,
         veiculo.secretaria,
       ]
         .join(" ")
@@ -494,10 +675,13 @@ export async function getFrotasData(params?: {
     .map((vencimento) => ({
       ano: vencimento.frota_veiculos?.ano ?? null,
       data_vencimento: vencimento.data_vencimento,
+      descricao: vencimento.descricao,
       dias_restantes: getDaysUntil(vencimento.data_vencimento),
+      external_ref: vencimento.external_ref,
       id: vencimento.id,
       marca: vencimento.frota_veiculos?.marca ?? "-",
       modelo: vencimento.frota_veiculos?.modelo ?? "-",
+      origem: vencimento.origem ?? "manual",
       placa: vencimento.frota_veiculos?.placa ?? "-",
       prefeitura_id: vencimento.frota_veiculos?.prefeitura_id ?? "",
       prefixo: vencimento.frota_veiculos?.prefixo ?? "-",
@@ -516,6 +700,7 @@ export async function getFrotasData(params?: {
       ultimo_pagamento_valor:
         pagamentosByVencimento.get(vencimento.id)?.ultimo_pagamento_valor ??
         null,
+      valor: vencimento.valor,
       veiculo_id: vencimento.veiculo_id,
     }))
     .filter((vencimento) =>
@@ -607,6 +792,51 @@ export async function getVeiculoDebitosData(veiculoId: string) {
   return {
     consultas: (consultasResult.data ?? []) as FrotaDebitoConsulta[],
     debitos: (debitosResult.data ?? []) as FrotaDebitoVeicular[],
+  };
+}
+
+export async function getVeiculoConsultaVeicularData(veiculoId: string) {
+  const supabase = createSupabaseServerClient();
+  const multasResult = await supabase
+    .from("frota_multas_veiculares")
+    .select(
+      "id,origem,numero_auto,situacao,descricao,data_infracao,hora,local_complemento,valor"
+    )
+    .eq("veiculo_id", veiculoId)
+    .order("data_infracao", { ascending: false });
+
+  if (multasResult.error) {
+    if (isMissingFrotasTableError(multasResult.error.message)) {
+      return { multas: [], processos: [], recursos: [] };
+    }
+
+    throw new Error(multasResult.error.message);
+  }
+
+  const recursosResult = await supabase
+    .from("frota_recursos_infracao")
+    .select("id,processo,numero_auto,detalhamento_infracao,resultado_processo")
+    .eq("veiculo_id", veiculoId)
+    .order("created_at", { ascending: false });
+
+  if (recursosResult.error) {
+    throw new Error(recursosResult.error.message);
+  }
+
+  const processosResult = await supabase
+    .from("frota_processos_veiculares")
+    .select("id,processo,inicio_em,final_em,interessado,situacao,servicos")
+    .eq("veiculo_id", veiculoId)
+    .order("created_at", { ascending: false });
+
+  if (processosResult.error) {
+    throw new Error(processosResult.error.message);
+  }
+
+  return {
+    multas: (multasResult.data ?? []) as FrotaMultaVeicular[],
+    processos: (processosResult.data ?? []) as FrotaProcessoVeicular[],
+    recursos: (recursosResult.data ?? []) as FrotaRecursoInfracao[],
   };
 }
 
@@ -992,8 +1222,10 @@ function withFuelConsumption(abastecimentos: FrotaAbastecimento[]) {
 export function formatVeiculoStatus(status: VeiculoStatus) {
   const labels: Record<VeiculoStatus, string> = {
     active: "Ativo",
-    maintenance: "Em manutenção",
     inactive: "Inativo",
+    maintenance: "Em manutenção",
+    consult_error: "Falha na consulta",
+    processing: "Processando",
   };
 
   return labels[status];
@@ -1088,7 +1320,10 @@ function isMissingFrotasTableError(message: string) {
     message.includes("frota_manutencao_anexos") ||
     message.includes("frota_manutencoes") ||
     message.includes("frota_abastecimentos") ||
+    message.includes("frota_multas_veiculares") ||
+    message.includes("frota_processos_veiculares") ||
     message.includes("frota_postos_credenciados") ||
+    message.includes("frota_recursos_infracao") ||
     message.includes("frota_veiculo_anexos") ||
     message.includes("frota_veiculos") ||
     message.includes("frota_vencimentos")

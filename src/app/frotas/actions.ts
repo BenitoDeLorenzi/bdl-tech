@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentUserProfile, requireUserProfile } from "@/lib/auth-data";
-import { requestCelcoinVehicleDebtConsult } from "@/lib/celcoin";
 import {
   type FrotaAbastecimento,
   type ManutencaoStatus,
@@ -13,11 +12,18 @@ import {
 } from "@/lib/frotas-data";
 import { hasFrotasPermission } from "@/lib/frotas-permissions";
 import { getPostoSession } from "@/lib/posto-auth";
+import {
+  isPlexiVehicleConsultEnabled,
+  refreshPlexiVehicleConsultResult,
+  requestPlexiVehicleConsult,
+} from "@/lib/plexi";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type FrotaActionState = {
   abastecimento?: FrotaAbastecimento;
   error?: string;
+  plexiConsultaId?: string;
+  processing?: string;
   success?: string;
 };
 
@@ -25,6 +31,8 @@ const allowedStatuses = new Set<VeiculoStatus>([
   "active",
   "maintenance",
   "inactive",
+  "processing",
+  "consult_error",
 ]);
 const vehiclePhotoBucket = "frota-veiculos";
 const vehicleAttachmentBucket = "frota-veiculo-anexos";
@@ -60,18 +68,117 @@ export async function createVeiculo(
     return { error: formatSupabaseError(error?.message ?? "Veículo não criado.") };
   }
 
-  const consultResult = await requestCelcoinVehicleDebtConsult(supabase, {
-    licensePlate: payload.veiculo.placa,
-    prefeituraId: payload.veiculo.prefeitura_id,
-    renavam: payload.veiculo.renavam,
+  revalidatePath("/frotas");
+  return { success: "Veículo cadastrado com sucesso." };
+}
+
+export async function createVeiculoAutomatico(
+  _previousState: FrotaActionState,
+  formData: FormData
+): Promise<FrotaActionState> {
+  const permissionError = await requireFrotasPermission("vehicles.create");
+
+  if (permissionError) {
+    return { error: permissionError };
+  }
+
+  const prefeituraId = getRequiredValue(formData, "prefeitura_id");
+  const placa = normalizePlate(getRequiredValue(formData, "placa"));
+  const renavam = getRequiredValue(formData, "renavam");
+
+  if (!prefeituraId || !placa || !renavam) {
+    return { error: "Informe prefeitura, placa e Renavam." };
+  }
+
+  if (!isValidPlate(placa)) {
+    return { error: "Informe uma placa brasileira válida." };
+  }
+
+  if (!isValidRenavam(renavam)) {
+    return { error: "Informe um Renavam válido com 11 dígitos." };
+  }
+
+  if (!isPlexiVehicleConsultEnabled()) {
+    return {
+      error:
+        "A consulta automática está desativada. Ative PLEXI_API_ENABLED=true para usar este fluxo.",
+    };
+  }
+
+  if (!process.env.PLEXI_API_TOKEN) {
+    return {
+      error: "Configure PLEXI_API_TOKEN antes de consultar.",
+    };
+  }
+
+  if (!process.env.PLEXI_SECRET_NAME) {
+    return {
+      error:
+        "Configure o identificador do certificado digital antes de usar a consulta automática.",
+    };
+  }
+
+  const supabase = createSupabaseServerClient();
+  const { data: existingVehicle, error: existingVehicleError } = await supabase
+    .from("frota_veiculos")
+    .select("id")
+    .eq("prefeitura_id", prefeituraId)
+    .eq("placa", placa)
+    .maybeSingle();
+
+  if (existingVehicleError) {
+    return { error: formatSupabaseError(existingVehicleError.message) };
+  }
+
+  if (existingVehicle) {
+    return { error: "Já existe um veículo cadastrado com esta placa." };
+  }
+
+  const currentYear = new Date().getFullYear();
+  const { data, error } = await supabase
+    .from("frota_veiculos")
+    .insert({
+      ano: currentYear,
+      ano_fabricacao: null,
+      ano_modelo: currentYear,
+      combustivel: "Aguardando consulta",
+      marca: "Aguardando consulta",
+      modelo: "Aguardando consulta",
+      origem_dados: "Consulta automática",
+      placa,
+      prefeitura_id: prefeituraId,
+      renavam,
+      status: "processing" satisfies VeiculoStatus,
+      tipo: "Automovel",
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    return { error: formatSupabaseError(error?.message ?? "Veículo não criado.") };
+  }
+
+  const consultResult = await requestPlexiVehicleConsult(supabase, {
+    licensePlate: placa,
+    prefeituraId,
+    renavam,
     veiculoId: data.id,
   });
 
   revalidatePath("/frotas");
+  revalidatePath("/frotas/veiculos");
+
+  if (consultResult.error) {
+    await supabase.from("frota_veiculos").delete().eq("id", data.id);
+
+    return {
+      error: consultResult.error,
+    };
+  }
+
   return {
-    success: consultResult.started
-      ? "Veículo cadastrado e consulta de débitos iniciada."
-      : "Veículo cadastrado com sucesso.",
+    success:
+      "Veículo cadastrado como processando. Os dados serão atualizados quando a consulta automática finalizar.",
   };
 }
 
@@ -98,6 +205,23 @@ export async function updateVeiculo(
   }
 
   const supabase = createSupabaseServerClient();
+  const { data: currentVehicle, error: currentVehicleError } = await supabase
+    .from("frota_veiculos")
+    .select("status")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (currentVehicleError) {
+    return { error: formatSupabaseError(currentVehicleError.message) };
+  }
+
+  if (currentVehicle?.status === "processing") {
+    return {
+      error:
+        "Aguarde a consulta automática terminar antes de editar este veículo.",
+    };
+  }
+
   const { error } = await supabase
     .from("frota_veiculos")
     .update(payload.veiculo)
@@ -125,7 +249,7 @@ export async function deleteVeiculo(formData: FormData) {
     await Promise.all([
       supabase
         .from("frota_veiculos")
-        .select("id,foto_path")
+        .select("id,foto_path,status")
         .eq("id", id)
         .single(),
       supabase
@@ -137,6 +261,14 @@ export async function deleteVeiculo(formData: FormData) {
         .select("file_path")
         .eq("veiculo_id", id),
     ]);
+
+  if (veiculoResult.data?.status === "processing") {
+    redirect(
+      `/frotas/veiculos?error=${encodeURIComponent(
+        "Aguarde a consulta automática terminar antes de excluir este veículo."
+      )}`
+    );
+  }
 
   if (veiculoResult.error || !veiculoResult.data) {
     redirect(
@@ -488,6 +620,62 @@ export async function updateVeiculoStatus(
   return { success: "Status do veículo atualizado com sucesso." };
 }
 
+export async function syncVeiculoConsultaAutomatica(formData: FormData) {
+  const permissionError = await requireFrotasPermission("vehicles.update");
+
+  if (permissionError) {
+    redirect(`/frotas/veiculos?error=${encodeURIComponent(permissionError)}`);
+  }
+
+  const id = getRequiredValue(formData, "id");
+
+  if (!id) {
+    redirect("/frotas/veiculos?error=Ve%C3%ADculo%20n%C3%A3o%20encontrado.");
+  }
+
+  const supabase = createSupabaseServerClient();
+  const { data: consulta, error } = await supabase
+    .from("frota_debito_consultas")
+    .select("id")
+    .eq("provider", "plexi")
+    .eq("veiculo_id", id)
+    .not("id_consult", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !consulta) {
+    redirect(
+      `/frotas/veiculos?error=${encodeURIComponent(
+        error?.message ?? "Consulta automática não encontrada."
+      )}`
+    );
+  }
+
+  const result = await refreshPlexiVehicleConsultResult(supabase, consulta.id);
+
+  revalidatePath("/frotas");
+  revalidatePath("/frotas/veiculos");
+
+  if (result.status === "success") {
+    redirect("/frotas/veiculos?updated=1");
+  }
+
+  if (result.status === "processing") {
+    redirect(
+      `/frotas/veiculos?error=${encodeURIComponent(
+        "A consulta ainda está processando. Tente novamente em alguns instantes."
+      )}`
+    );
+  }
+
+  redirect(
+    `/frotas/veiculos?error=${encodeURIComponent(
+      result.error ?? "Não foi possível sincronizar a consulta automática."
+    )}`
+  );
+}
+
 export async function registrarPagamentoVencimento(
   _previousState: FrotaActionState,
   formData: FormData
@@ -509,7 +697,7 @@ export async function registrarPagamentoVencimento(
   const valorTotal = parseCurrencyValue(getRequiredValue(formData, "valor_total"));
 
   if (!id) {
-    return { error: "Vencimento não encontrado." };
+    return { error: "Débito não encontrado." };
   }
 
   if (!dataPagamento) {
@@ -554,7 +742,7 @@ export async function registrarPagamentoVencimento(
   if (vencimentoError || !vencimento) {
     return {
       error: formatSupabaseError(
-        vencimentoError?.message ?? "Vencimento não encontrado."
+        vencimentoError?.message ?? "Débito não encontrado."
       ),
     };
   }
@@ -639,7 +827,7 @@ export async function registrarPagamentoVencimento(
   return {
     success:
       status === "paid"
-        ? "Pagamento quitado e vencimento renovado com sucesso."
+        ? "Pagamento quitado e débito renovado com sucesso."
         : "Pagamento parcial registrado com sucesso.",
   };
 }
@@ -658,7 +846,7 @@ export async function updateVencimentoData(
   const dataVencimento = getRequiredValue(formData, "data_vencimento");
 
   if (!id || !dataVencimento) {
-    return { error: "Informe a data do vencimento." };
+    return { error: "Informe a data do débito." };
   }
 
   const supabase = createSupabaseServerClient();
@@ -676,7 +864,158 @@ export async function updateVencimentoData(
 
   revalidatePath("/frotas");
   revalidatePath("/frotas/veiculos");
-  return { success: "Vencimento atualizado com sucesso." };
+  return { success: "Débito atualizado com sucesso." };
+}
+
+export async function createDebitoManual(
+  _previousState: FrotaActionState,
+  formData: FormData
+): Promise<FrotaActionState> {
+  const permissionError = await requireFrotasPermission("expirations.manage");
+
+  if (permissionError) {
+    return { error: permissionError };
+  }
+
+  const veiculoId = getRequiredValue(formData, "veiculo_id");
+  const tipo = getRequiredValue(formData, "tipo");
+  const dataVencimento = getRequiredValue(formData, "data_vencimento");
+  const descricao = getOptionalValue(formData, "descricao");
+  const valor = parseCurrencyValue(getOptionalValue(formData, "valor") ?? "");
+
+  if (!veiculoId || !tipo || !dataVencimento) {
+    return { error: "Preencha os campos obrigatórios do débito." };
+  }
+
+  if (!["seguro", "ipva", "licenciamento"].includes(tipo)) {
+    return { error: "Tipo de débito inválido." };
+  }
+
+  const supabase = createSupabaseServerClient();
+  const { data: veiculo, error: veiculoError } = await supabase
+    .from("frota_veiculos")
+    .select("id,prefeitura_id")
+    .eq("id", veiculoId)
+    .single();
+
+  if (veiculoError || !veiculo) {
+    return {
+      error: formatSupabaseError(veiculoError?.message ?? "Veículo não encontrado."),
+    };
+  }
+
+  const { error } = await supabase.from("frota_vencimentos").insert({
+    data_vencimento: dataVencimento,
+    descricao,
+    origem: "manual",
+    prefeitura_id: veiculo.prefeitura_id,
+    status: "pending",
+    tipo,
+    valor: valor || null,
+    veiculo_id: veiculo.id,
+  });
+
+  if (error) {
+    return { error: formatSupabaseError(error.message) };
+  }
+
+  revalidatePath("/frotas");
+  revalidatePath("/frotas/veiculos");
+  revalidatePath(`/frotas/veiculos/${veiculo.id}`);
+  revalidatePath(`/frotas/veiculos/${veiculo.id}/debitos`);
+  return { success: "Débito cadastrado com sucesso." };
+}
+
+export async function createMultaManual(
+  _previousState: FrotaActionState,
+  formData: FormData
+): Promise<FrotaActionState> {
+  const permissionError = await requireFrotasPermission("vehicles.manage");
+
+  if (permissionError) {
+    return { error: permissionError };
+  }
+
+  const veiculoId = getRequiredValue(formData, "veiculo_id");
+  const numeroAuto = getRequiredValue(formData, "numero_auto").toUpperCase();
+  const situacao = getOptionalValue(formData, "situacao");
+  const descricao = getRequiredValue(formData, "descricao").toUpperCase();
+  const dataInfracao = parseBrazilianDate(getRequiredValue(formData, "data"));
+  const hora = getOptionalValue(formData, "hora");
+  const localComplemento = getOptionalValue(formData, "local_complemento")?.toUpperCase();
+  const valor = parseCurrencyValue(getOptionalValue(formData, "valor") ?? "");
+
+  if (!veiculoId || !numeroAuto || !descricao || !dataInfracao) {
+    return { error: "Preencha os campos obrigatórios da multa." };
+  }
+
+  if (dataInfracao === "invalid") {
+    return { error: "Informe a data da infração no formato dd/MM/yyyy." };
+  }
+
+  if (hora && !/^\d{2}:\d{2}$/.test(hora)) {
+    return { error: "Informe a hora no formato HH:mm." };
+  }
+
+  const supabase = createSupabaseServerClient();
+  const { data: veiculo, error: veiculoError } = await supabase
+    .from("frota_veiculos")
+    .select("id,prefeitura_id")
+    .eq("id", veiculoId)
+    .single();
+
+  if (veiculoError || !veiculo) {
+    return {
+      error: formatSupabaseError(veiculoError?.message ?? "Veículo não encontrado."),
+    };
+  }
+
+  const { data: existingMulta, error: existingMultaError } = await supabase
+    .from("frota_multas_veiculares")
+    .select("id")
+    .eq("veiculo_id", veiculo.id)
+    .eq("origem", "manual")
+    .eq("numero_auto", numeroAuto)
+    .maybeSingle();
+
+  if (existingMultaError) {
+    return { error: formatSupabaseError(existingMultaError.message) };
+  }
+
+  if (existingMulta) {
+    return { error: "Já existe uma multa manual cadastrada com este número de auto." };
+  }
+
+  const { error } = await supabase.from("frota_multas_veiculares").insert({
+    data_infracao: dataInfracao,
+    descricao,
+    hora,
+    local_complemento: localComplemento,
+    numero_auto: numeroAuto,
+    origem: "manual",
+    prefeitura_id: veiculo.prefeitura_id,
+    raw_payload: {
+      data: dataInfracao,
+      descricao,
+      hora,
+      localComplemento,
+      numeroAuto,
+      situacao,
+      valor,
+    },
+    situacao,
+    valor,
+    veiculo_id: veiculo.id,
+  });
+
+  if (error) {
+    return { error: formatSupabaseError(error.message) };
+  }
+
+  revalidatePath("/frotas");
+  revalidatePath("/frotas/veiculos");
+  revalidatePath(`/frotas/veiculos/${veiculo.id}`);
+  return { success: "Multa cadastrada com sucesso." };
 }
 
 export async function createAbastecimento(
@@ -1664,31 +2003,43 @@ export async function cancelManutencao(formData: FormData) {
 function getVeiculoPayload(formData: FormData) {
   const prefeitura_id = getRequiredValue(formData, "prefeitura_id");
   const placa = normalizePlate(getRequiredValue(formData, "placa"));
-  const prefixo = getRequiredValue(formData, "prefixo");
+  const renavam = getRequiredValue(formData, "renavam");
+  const lugares = getOptionalValue(formData, "lugares");
+  const tipo = getRequiredValue(formData, "tipo");
+  const cor = getOptionalValue(formData, "cor");
+  const combustivel = getRequiredValue(formData, "combustivel");
+  const carroceria = getOptionalValue(formData, "carroceria");
+  const categoria = getOptionalValue(formData, "categoria");
+  const anoFabricacaoValue = getRequiredValue(formData, "ano_fabricacao");
+  const anoModeloValue = getRequiredValue(formData, "ano_modelo");
+  const anoFabricacao = Number(anoFabricacaoValue);
+  const anoModelo = Number(anoModeloValue);
+  const ano = anoModelo || anoFabricacao;
+  const dataAquisicao = parseBrazilianDate(getOptionalValue(formData, "data_aquisicao"));
+  const municipioEmplacamento = getOptionalValue(formData, "municipio_emplacamento");
+  const situacaoVeicular = getOptionalValue(formData, "situacao_veicular");
   const marca = getRequiredValue(formData, "marca");
   const modelo = getRequiredValue(formData, "modelo");
-  const ano = Number(getRequiredValue(formData, "ano"));
-  const tipo = getRequiredValue(formData, "tipo");
-  const versao = getOptionalValue(formData, "versao");
-  const combustivel = getRequiredValue(formData, "combustivel");
-  const secretaria = getRequiredValue(formData, "secretaria");
-  const quilometragemValue = getRequiredValue(formData, "quilometragem");
-  const quilometragem = Number(quilometragemValue);
-  const renavam = getRequiredValue(formData, "renavam");
-  const status = getRequiredValue(formData, "status") as VeiculoStatus;
-  const observacoes = getOptionalValue(formData, "observacoes");
+  const proprietarioAtual = getOptionalValue(formData, "proprietario_atual");
+  const proprietarioAnterior = getOptionalValue(formData, "proprietario_anterior");
+  const restricaoVenda = getOptionalValue(formData, "restricao_venda");
+  const restricoes = getOptionalValue(formData, "restricoes");
+  const licenciado = getOptionalValue(formData, "licenciado");
+  const origemDados = getOptionalValue(formData, "origem_dados");
+  const principalCondutor = getOptionalValue(formData, "principal_condutor");
+  const especie = getOptionalValue(formData, "especie");
+  const status = (getOptionalValue(formData, "status") ?? "active") as VeiculoStatus;
 
   if (
     !prefeitura_id ||
     !placa ||
+    !renavam ||
     !marca ||
     !modelo ||
     !ano ||
+    !anoModeloValue ||
     !tipo ||
     !combustivel ||
-    !quilometragemValue ||
-    !Number.isFinite(quilometragem) ||
-    !renavam ||
     !status
   ) {
     return { error: "Preencha todos os campos obrigatórios." };
@@ -1707,31 +2058,66 @@ function getVeiculoPayload(formData: FormData) {
   }
 
   if (String(ano).length !== 4) {
-    return { error: "Informe um ano válido." };
+    return { error: "Informe um ano modelo válido." };
   }
 
-  if (quilometragem < 0) {
-    return { error: "Informe uma quilometragem válida." };
+  if (anoFabricacaoValue && String(anoFabricacao).length !== 4) {
+    return { error: "Informe um ano de fabricação válido." };
+  }
+
+  if (dataAquisicao === "invalid") {
+    return { error: "Informe a data de aquisição no formato dd/MM/yyyy." };
   }
 
   return {
     veiculo: {
       ano,
+      ano_fabricacao: Number.isFinite(anoFabricacao) ? anoFabricacao : null,
+      ano_modelo: anoModelo,
+      carroceria,
+      categoria,
       marca,
       modelo,
-      observacoes,
+      cor,
+      data_aquisicao: dataAquisicao,
+      licenciado,
+      lugares,
+      municipio_emplacamento: municipioEmplacamento,
       placa,
       prefeitura_id,
-      prefixo,
-      quilometragem,
+      principal_condutor: principalCondutor,
+      proprietario_anterior: proprietarioAnterior,
+      proprietario_atual: proprietarioAtual,
       renavam,
-      secretaria,
+      restricao_venda: restricaoVenda,
+      restricoes,
+      situacao_veicular: situacaoVeicular,
       status,
       tipo,
-      versao,
       combustivel,
+      especie,
+      origem_dados: origemDados ?? "Cadastro",
     },
   };
+}
+
+function parseBrazilianDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+
+  if (!match) {
+    return "invalid";
+  }
+
+  const [, day, month, year] = match;
+  return `${year}-${month}-${day}`;
 }
 
 function getRequiredValue(formData: FormData, key: string) {
@@ -2333,6 +2719,10 @@ function formatSupabaseError(message: string) {
     return "Este veículo já possui uma ordem de abastecimento pendente.";
   }
 
+  if (message.includes("frota_vencimentos_veiculo_id_tipo_key")) {
+    return "Este veículo já possui um débito cadastrado para este tipo.";
+  }
+
   if (message.includes("duplicate") || message.includes("unique")) {
     return "Já existe um registro cadastrado com estes dados.";
   }
@@ -2342,6 +2732,7 @@ function formatSupabaseError(message: string) {
     message.includes("frota_abastecimento_anexos") ||
     message.includes("frota_abastecimentos") ||
     message.includes("frota_postos_credenciados") ||
+    message.includes("frota_secretarias") ||
     message.includes("frota_veiculo_anexos") ||
     message.includes("frota_veiculos") ||
     message.includes("frota_vencimentos")
@@ -2350,6 +2741,33 @@ function formatSupabaseError(message: string) {
   }
 
   return message;
+}
+
+async function validateSecretaria(
+  supabase: ReturnType<typeof createSupabaseServerClient>,
+  prefeituraId: string,
+  secretaria: string
+) {
+  const { data, error } = await supabase
+    .from("frota_secretarias")
+    .select("id,status")
+    .eq("prefeitura_id", prefeituraId)
+    .eq("nome", secretaria)
+    .maybeSingle();
+
+  if (error) {
+    return formatSupabaseError(error.message);
+  }
+
+  if (!data) {
+    return "Selecione uma secretaria cadastrada para esta prefeitura.";
+  }
+
+  if (data.status !== "active") {
+    return "Selecione uma secretaria ativa.";
+  }
+
+  return null;
 }
 
 async function requireFrotasPermission(permission: string) {

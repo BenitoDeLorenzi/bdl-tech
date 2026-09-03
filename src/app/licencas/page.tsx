@@ -241,7 +241,7 @@ export default async function LicencasPage({ searchParams }: PageProps) {
                         <TableHead>Prefeitura</TableHead>
                         <TableHead>Módulo</TableHead>
                         <TableHead>Vigência</TableHead>
-                        <TableHead>Valor anual</TableHead>
+                        <TableHead>Cobrança</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="w-[92px] text-right">
                           Ações
@@ -278,7 +278,15 @@ export default async function LicencasPage({ searchParams }: PageProps) {
                               />
                             </div>
                           </TableCell>
-                          <TableCell>{formatCurrency(licenca.valor_anual)}</TableCell>
+                          <TableCell>
+                            <div className="font-medium">
+                              {formatCurrency(licenca.valor_mensal)}/mês
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Contrato anual de{" "}
+                              {formatCurrency(licenca.valor_anual)}
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <LicencaStatusBadge status={licenca.status} />
                           </TableCell>

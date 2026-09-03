@@ -329,6 +329,15 @@ function getAllowedPermissionKeys(role: UsuarioRole) {
       "fuel.read",
       "fuel_stations.manage",
       "fuel_stations.read",
+      "drivers.manage",
+      "drivers.read",
+      "departments.manage",
+      "departments.read",
+      "reports.read",
+      "vehicle_usage.read",
+      "vehicle_usage.create",
+      "vehicle_usage.return",
+      "vehicle_usage.cancel",
     ]);
   }
 

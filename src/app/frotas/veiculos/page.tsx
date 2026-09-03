@@ -8,10 +8,12 @@ import {
   Fuel,
   Gauge,
   Hash,
-  Paperclip,
+  Loader2,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
+  Settings,
   Trash2,
   Wrench,
   X,
@@ -52,24 +54,24 @@ import {
 } from "@/components/ui/tooltip";
 import {
   formatFrotaDate,
-  formatManutencaoStatus,
   formatVeiculoStatus,
   formatVencimentoTipo,
   getFrotasData,
-  type FrotaVeiculoManutencao,
   type FrotaVeiculo,
   type VeiculoStatus,
   type VencimentoTipo,
 } from "@/lib/frotas-data";
 import { requireUserProfile } from "@/lib/auth-data";
 import { getFrotasPermissionAccess } from "@/lib/frotas-permissions";
-import { AnexosManagerForm } from "../anexos-manager-form";
+import { getSecretariaOptions } from "@/lib/secretarias-data";
 import { CopyValueButton } from "../copy-value-button";
 import { DeleteVeiculoForm } from "../delete-veiculo-form";
 import { FrotasShell } from "../frotas-shell";
 import { FrotasToasts } from "../frotas-toasts";
 import { VeiculoFotoAvatarControl } from "../veiculo-foto-avatar-control";
 import { VeiculoForm } from "../veiculo-form";
+import { syncVeiculoConsultaAutomatica } from "../actions";
+import { VehicleRealtimeSync } from "./vehicle-realtime-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +89,8 @@ const statusFilters = [
   { label: "Todos", status: undefined },
   { label: "Ativos", status: "active" },
   { label: "Manutenção", status: "maintenance" },
+  { label: "Processando", status: "processing" },
+  { label: "Falha", status: "consult_error" },
   { label: "Inativos", status: "inactive" },
 ];
 
@@ -104,6 +108,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
     query: params.q,
     status: params.status,
   });
+  const secretarias = await getSecretariaOptions(data.selectedPrefeituraId);
   const searchTerm = params.q?.trim();
   const buildFilterHref = (values: {
     prefeitura?: string | null;
@@ -142,6 +147,8 @@ export default async function FrotasPage({ searchParams }: PageProps) {
           buildFilterHref={buildFilterHref}
           data={data}
           params={params}
+          secretarias={secretarias}
+          showPrefeituraField={profile.role === "bdl_admin"}
         />
       }
       icon={Car}
@@ -150,6 +157,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
       selectedPrefeituraId={data.selectedPrefeituraId}
       title="Veículos"
     >
+      <VehicleRealtimeSync prefeituraId={data.selectedPrefeituraId} />
       <FrotasToasts deleted={params.deleted} error={params.error} />
         <main className="flex flex-1 flex-col gap-3 p-4">
             <Card>
@@ -209,7 +217,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                                   {veiculo.modelo}
                                 </div>
                                 <div className="truncate text-sm text-muted-foreground">
-                                  {veiculo.marca} · {veiculo.ano}
+                                  {veiculo.marca} · {veiculo.ano_modelo ?? veiculo.ano}
                                 </div>
                               </div>
                             </TableCell>
@@ -285,94 +293,47 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                                   <TooltipTrigger
                                     render={
                                       <Link
-                                        href={`/frotas/veiculos/${veiculo.id}/vencimentos`}
+                                        href={`/frotas/veiculos/${veiculo.id}`}
                                         className={buttonVariants({
                                           variant: "ghost",
                                           size: "icon-sm",
                                         })}
-                                        aria-label="Vencimentos"
+                                        aria-label="Gestão do veículo"
                                       >
-                                        <CalendarClock className="size-4" />
+                                        <Settings className="size-4" />
                                       </Link>
                                     }
                                   />
-                                  <TooltipContent>Vencimentos</TooltipContent>
+                                  <TooltipContent>Gestão do veículo</TooltipContent>
                                 </Tooltip>
 
-                                <Dialog>
+                                {["processing", "consult_error"].includes(veiculo.status) ? (
                                   <Tooltip>
                                     <TooltipTrigger
                                       render={
-                                        <DialogTrigger
-                                          className={buttonVariants({
-                                            variant: "ghost",
-                                            size: "icon-sm",
-                                          })}
-                                          aria-label="Histórico de manutenção"
-                                        >
-                                          <Wrench className="size-4" />
-                                        </DialogTrigger>
+                                        <form action={syncVeiculoConsultaAutomatica}>
+                                          <input
+                                            type="hidden"
+                                            name="id"
+                                            value={veiculo.id}
+                                          />
+                                          <Button
+                                            type="submit"
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            aria-label="Sincronizar consulta"
+                                          >
+                                            <RefreshCw className="size-4" />
+                                          </Button>
+                                        </form>
                                       }
                                     />
-                                    <TooltipContent>
-                                      Histórico de manutenção
-                                    </TooltipContent>
+                                    <TooltipContent>Sincronizar consulta</TooltipContent>
                                   </Tooltip>
-                                  <DialogContent className="sm:max-w-2xl">
-                                    <DialogHeader>
-                                      <DialogTitle>
-                                        Histórico de manutenção
-                                      </DialogTitle>
-                                      <DialogDescription>
-                                        Registros vinculados ao veículo{" "}
-                                        {veiculo.placa}.
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    <VeiculoMaintenanceHistory
-                                      manutencoes={veiculo.manutencoes}
-                                    />
-                                  </DialogContent>
-                                </Dialog>
-
-                                {access.canUpdateVeiculos ? (
-                                  <Dialog>
-                                    <Tooltip>
-                                      <TooltipTrigger
-                                        render={
-                                          <DialogTrigger
-                                            className={buttonVariants({
-                                              variant: "ghost",
-                                              size: "icon-sm",
-                                            })}
-                                            aria-label="Gerenciar anexos"
-                                          >
-                                            <Paperclip className="size-4" />
-                                          </DialogTrigger>
-                                        }
-                                      />
-                                      <TooltipContent>
-                                        Gerenciar anexos
-                                      </TooltipContent>
-                                    </Tooltip>
-                                    <DialogContent className="sm:max-w-2xl">
-                                      <DialogHeader>
-                                        <DialogTitle>Anexos do veículo</DialogTitle>
-                                        <DialogDescription>
-                                          Documentos vinculados ao veículo{" "}
-                                          {veiculo.placa}.
-                                        </DialogDescription>
-                                      </DialogHeader>
-                                      <AnexosManagerForm
-                                        anexos={veiculo.anexos}
-                                        ownerId={veiculo.id}
-                                        ownerLabel="veículo"
-                                        type="veiculo"
-                                      />
-                                    </DialogContent>
-                                  </Dialog>
                                 ) : null}
 
-                                {access.canUpdateVeiculos ? (
+                                {access.canUpdateVeiculos &&
+                                veiculo.status !== "processing" ? (
                                   <Dialog>
                                     <Tooltip>
                                       <TooltipTrigger
@@ -390,14 +351,18 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                                       />
                                       <TooltipContent>Editar veículo</TooltipContent>
                                     </Tooltip>
-                                    <DialogContent className="sm:max-w-3xl">
+                                    <DialogContent className="sm:max-w-5xl">
                                       <DialogHeader>
                                         <DialogTitle>Editar veículo</DialogTitle>
                                       </DialogHeader>
                                       <VeiculoForm
                                         prefeituras={data.prefeituras}
+                                        secretarias={secretarias}
                                         selectedPrefeituraId={
                                           data.selectedPrefeituraId
+                                        }
+                                        showPrefeituraField={
+                                          profile.role === "bdl_admin"
                                         }
                                         veiculo={veiculo}
                                       />
@@ -405,7 +370,8 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                                   </Dialog>
                                 ) : null}
 
-                                {access.canDeleteVeiculos ? (
+                                {access.canDeleteVeiculos &&
+                                veiculo.status !== "processing" ? (
                                   <Dialog>
                                     <Tooltip>
                                       <TooltipTrigger
@@ -446,6 +412,8 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                   <EmptyFleetState
                     canCreate={access.canCreateVeiculos}
                     prefeituras={data.prefeituras}
+                    secretarias={secretarias}
+                    showPrefeituraField={profile.role === "bdl_admin"}
                     selectedPrefeituraId={data.selectedPrefeituraId}
                   />
                 )}
@@ -461,6 +429,8 @@ function VeiculosToolbar({
   buildFilterHref,
   data,
   params,
+  secretarias,
+  showPrefeituraField,
 }: {
   access: Awaited<ReturnType<typeof getFrotasPermissionAccess>>;
   buildFilterHref: (values: {
@@ -469,6 +439,8 @@ function VeiculosToolbar({
   }) => string;
   data: Awaited<ReturnType<typeof getFrotasData>>;
   params: Awaited<PageProps["searchParams"]>;
+  secretarias: Awaited<ReturnType<typeof getSecretariaOptions>>;
+  showPrefeituraField: boolean;
 }) {
   const hasActiveFilters = Boolean(params.q?.trim() || params.status || params.prefeitura);
 
@@ -558,13 +530,15 @@ function VeiculosToolbar({
             <Plus className="size-4" />
             Novo veículo
           </DialogTrigger>
-          <DialogContent className="sm:max-w-3xl">
+          <DialogContent className="sm:max-w-5xl">
             <DialogHeader>
               <DialogTitle>Novo veículo</DialogTitle>
             </DialogHeader>
             <VeiculoForm
               prefeituras={data.prefeituras}
+              secretarias={secretarias}
               selectedPrefeituraId={data.selectedPrefeituraId}
+              showPrefeituraField={showPrefeituraField}
             />
           </DialogContent>
         </Dialog>
@@ -576,10 +550,14 @@ function VeiculosToolbar({
 function EmptyFleetState({
   canCreate,
   prefeituras,
+  secretarias,
+  showPrefeituraField,
   selectedPrefeituraId,
 }: {
   canCreate: boolean;
   prefeituras: Awaited<ReturnType<typeof getFrotasData>>["prefeituras"];
+  secretarias: Awaited<ReturnType<typeof getSecretariaOptions>>;
+  showPrefeituraField: boolean;
   selectedPrefeituraId?: string;
 }) {
   return (
@@ -604,13 +582,15 @@ function EmptyFleetState({
             <Plus className="size-4" />
             Cadastrar veículo
           </DialogTrigger>
-          <DialogContent className="sm:max-w-3xl">
+          <DialogContent className="sm:max-w-5xl">
             <DialogHeader>
               <DialogTitle>Novo veículo</DialogTitle>
             </DialogHeader>
             <VeiculoForm
               prefeituras={prefeituras}
+              secretarias={secretarias}
               selectedPrefeituraId={selectedPrefeituraId}
+              showPrefeituraField={showPrefeituraField}
             />
           </DialogContent>
         </Dialog>
@@ -655,12 +635,12 @@ function VeiculoDetails({
                 <VehicleStatusBadge status={veiculo.status} />
               </div>
               <div>
-                <div className="text-base font-medium leading-tight">
-                  {veiculo.marca} · {veiculo.ano}
+                                <div className="text-base font-medium leading-tight">
+                  {veiculo.marca} · {veiculo.ano_modelo ?? veiculo.ano}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {veiculo.secretaria || "Sem secretaria"} ·{" "}
-                  {veiculo.combustivel ?? "-"}
+                  {veiculo.situacao_veicular ?? "Situação não informada"} ·{" "}
+                  {veiculo.licenciado ?? "Licenciamento não informado"}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -672,6 +652,11 @@ function VeiculoDetails({
                   <Fuel className="size-3.5" />
                   {veiculo.combustivel ?? "-"}
                 </Badge>
+                {veiculo.cor ? (
+                  <Badge variant="outline" className="font-normal">
+                    {veiculo.cor}
+                  </Badge>
+                ) : null}
                 <Badge variant="outline" className="font-normal">
                   <Gauge className="size-3.5" />
                   {formatMileage(veiculo.quilometragem)}
@@ -686,7 +671,7 @@ function VeiculoDetails({
               value={String(veiculo.manutencoes.length)}
             />
             <MetricTile
-              label="Vencimentos"
+              label="Débitos"
               value={String(Object.values(veiculo.vencimentos).filter(Boolean).length)}
             />
           </div>
@@ -703,6 +688,8 @@ function VeiculoDetails({
             <CompactDetail label="Prefeitura" value={veiculo.prefeitura_nome} />
             <CompactDetail label="Secretaria" value={veiculo.secretaria || "-"} />
             <CompactDetail label="Tipo" value={veiculo.tipo} />
+            <CompactDetail label="Espécie" value={veiculo.especie ?? "-"} />
+            <CompactDetail label="Categoria" value={veiculo.categoria ?? "-"} />
             <CompactDetail label="Prefixo" value={veiculo.prefixo || "-"} />
             <CompactDetail label="Renavam" value={veiculo.renavam ?? "-"} />
             <CompactDetail
@@ -725,6 +712,16 @@ function VeiculoDetails({
               value={formatMileage(veiculo.quilometragem)}
             />
             <CompactDetail label="Combustível" value={veiculo.combustivel ?? "-"} />
+            <CompactDetail label="Cor" value={veiculo.cor ?? "-"} />
+            <CompactDetail
+              label="Ano fabricação"
+              value={veiculo.ano_fabricacao ? String(veiculo.ano_fabricacao) : "-"}
+            />
+            <CompactDetail
+              label="Ano modelo"
+              value={veiculo.ano_modelo ? String(veiculo.ano_modelo) : "-"}
+            />
+            <CompactDetail label="Lugares" value={veiculo.lugares ?? "-"} />
             <CompactDetail
               label="Foto"
               value={veiculo.foto_url ? "Cadastrada" : "Pendente"}
@@ -735,7 +732,7 @@ function VeiculoDetails({
             />
             <div className="rounded-md bg-muted/35 px-2.5 py-1.5">
               <div className="mb-1 text-xs text-muted-foreground">
-                Vencimentos
+                Débitos
               </div>
               <VehicleDueDates vencimentos={veiculo.vencimentos} />
             </div>
@@ -743,87 +740,82 @@ function VeiculoDetails({
         </div>
       </div>
 
-      {veiculo.observacoes ? (
+      <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border p-2.5">
-          <div className="text-xs font-medium">Observações</div>
-          <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-            {veiculo.observacoes}
-          </p>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function VeiculoMaintenanceHistory({
-  manutencoes,
-}: {
-  manutencoes: FrotaVeiculoManutencao[];
-}) {
-  if (!manutencoes.length) {
-    return (
-      <div className="flex min-h-52 flex-col items-center justify-center rounded-lg border bg-muted/20 p-8 text-center">
-        <div className="flex size-11 items-center justify-center rounded-lg border bg-background">
-          <Wrench className="size-5 text-muted-foreground" />
-        </div>
-        <h3 className="mt-3 text-sm font-semibold">
-          Nenhuma manutenção registrada
-        </h3>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          Quando este veículo tiver manutenções, o histórico aparecerá aqui.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
-      {manutencoes.map((manutencao) => (
-        <div key={manutencao.id} className="rounded-lg border p-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="font-normal">
-                  {manutencao.tipo}
-                </Badge>
-                <MaintenanceStatusBadge status={manutencao.status} />
-              </div>
-              <div className="mt-2 font-medium">{manutencao.descricao}</div>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <span>Entrada: {formatFrotaDate(manutencao.data_entrada)}</span>
-                {manutencao.data_saida ? (
-                  <span>Saída: {formatFrotaDate(manutencao.data_saida)}</span>
-                ) : null}
-                {manutencao.oficina ? <span>{manutencao.oficina}</span> : null}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:min-w-48">
-              <MetricTile
-                label="Valor"
-                value={
-                  manutencao.valor ? formatCurrency(manutencao.valor) : "-"
-                }
-              />
-              <MetricTile
-                label="Km"
-                value={formatMileage(manutencao.quilometragem)}
-              />
-            </div>
+          <div className="flex items-center gap-2 text-xs font-medium">
+            <Hash className="size-3.5 text-muted-foreground" />
+            Dados oficiais
           </div>
+          <div className="mt-2 grid gap-1.5">
+            <CompactDetail
+              label="Data aquisição"
+              value={formatVehicleDate(veiculo.data_aquisicao)}
+            />
+            <CompactDetail
+              label="Município emplacamento"
+              value={veiculo.municipio_emplacamento ?? "-"}
+            />
+            <CompactDetail
+              label="Situação"
+              value={veiculo.situacao_veicular ?? "-"}
+            />
+            <CompactDetail
+              label="Licenciado"
+              value={veiculo.licenciado ?? "-"}
+            />
+            <CompactDetail
+              label="Origem"
+              value={veiculo.origem_dados ?? "Cadastro"}
+            />
+          </div>
+        </div>
 
-          {manutencao.responsavel || manutencao.observacoes ? (
-            <div className="mt-3 rounded-lg bg-muted/40 p-2 text-sm text-muted-foreground">
-              {manutencao.responsavel ? (
-                <div>Responsável: {manutencao.responsavel}</div>
-              ) : null}
-              {manutencao.observacoes ? (
-                <div className="mt-1">{manutencao.observacoes}</div>
-              ) : null}
+        <div className="rounded-lg border p-2.5">
+          <div className="flex items-center gap-2 text-xs font-medium">
+            <Car className="size-3.5 text-muted-foreground" />
+            Proprietários e restrições
+          </div>
+          <div className="mt-2 grid gap-1.5">
+            <CompactDetail
+              label="Proprietário atual"
+              value={veiculo.proprietario_atual ?? "-"}
+            />
+            <CompactDetail
+              label="Proprietário anterior"
+              value={veiculo.proprietario_anterior ?? "-"}
+            />
+            <CompactDetail
+              label="Restrição venda"
+              value={veiculo.restricao_venda ?? "-"}
+            />
+            <CompactDetail
+              label="Principal condutor"
+              value={veiculo.principal_condutor ?? "-"}
+            />
+          </div>
+        </div>
+      </div>
+
+      {veiculo.restricoes || veiculo.observacoes ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {veiculo.restricoes ? (
+            <div className="rounded-lg border p-2.5">
+              <div className="text-xs font-medium">Restrições</div>
+              <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+                {veiculo.restricoes}
+              </p>
+            </div>
+          ) : null}
+          {veiculo.observacoes ? (
+            <div className="rounded-lg border p-2.5">
+              <div className="text-xs font-medium">Observações</div>
+              <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+                {veiculo.observacoes}
+              </p>
             </div>
           ) : null}
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
@@ -848,25 +840,6 @@ function MetricTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MaintenanceStatusBadge({
-  status,
-}: {
-  status: FrotaVeiculoManutencao["status"];
-}) {
-  const styles: Record<FrotaVeiculoManutencao["status"], string> = {
-    cancelled: "border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100",
-    completed:
-      "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50",
-    open: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50",
-  };
-
-  return (
-    <Badge variant="outline" className={styles[status]}>
-      {formatManutencaoStatus(status)}
-    </Badge>
-  );
-}
-
 function formatMileage(value: number | null) {
   if (value === null) {
     return "-";
@@ -875,11 +848,14 @@ function formatMileage(value: number | null) {
   return `${new Intl.NumberFormat("pt-BR").format(value)} km`;
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    currency: "BRL",
-    style: "currency",
-  }).format(value);
+function formatVehicleDate(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00.000Z`));
 }
 
 function VehicleStatusBadge({ status }: { status: VeiculoStatus }) {
@@ -890,17 +866,21 @@ function VehicleStatusBadge({ status }: { status: VeiculoStatus }) {
       "border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100",
     maintenance:
       "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50",
+    consult_error: "border-red-200 bg-red-50 text-red-700 hover:bg-red-50",
+    processing: "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50",
   };
   const icons = {
     active: CircleCheck,
+    consult_error: CircleX,
     inactive: CircleX,
     maintenance: Wrench,
+    processing: Loader2,
   } satisfies Record<VeiculoStatus, typeof CircleCheck>;
   const Icon = icons[status];
 
   return (
     <Badge variant="outline" className={styles[status]}>
-      <Icon className="size-3.5" />
+      <Icon className={status === "processing" ? "size-3.5 animate-spin" : "size-3.5"} />
       {formatVeiculoStatus(status)}
     </Badge>
   );
@@ -923,7 +903,7 @@ function VehicleDueDates({
     );
 
   if (!visibleItems.length) {
-    return <span className="text-sm text-muted-foreground">Sem vencimentos</span>;
+    return <span className="text-sm text-muted-foreground">Sem débitos</span>;
   }
 
   return (

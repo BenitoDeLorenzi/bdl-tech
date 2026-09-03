@@ -21,7 +21,7 @@ export function DeleteVeiculoForm({ id }: DeleteVeiculoFormProps) {
           <div className="font-medium">Exclusão definitiva</div>
           <p className="mt-1 text-destructive/90">
             Ao excluir este veículo, todos os dados vinculados também serão
-            apagados, incluindo vencimentos, pagamentos, manutenções, débitos,
+            apagados, incluindo débitos, pagamentos, manutenções,
             anexos e foto do veículo.
           </p>
         </div>

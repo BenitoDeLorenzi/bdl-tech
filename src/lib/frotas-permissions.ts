@@ -13,13 +13,21 @@ export type FrotasPermissionAccess = {
   canCompleteManutencao: boolean;
   canManageAbastecimento: boolean;
   canManageManutencao: boolean;
+  canManageMotoristas: boolean;
+  canManageSecretarias: boolean;
   canManageVeiculos: boolean;
   canManageVencimentos: boolean;
+  canCancelUsoVeiculo: boolean;
+  canCreateUsoVeiculo: boolean;
+  canReturnUsoVeiculo: boolean;
   canUpdateManutencao: boolean;
   canUpdateVeiculos: boolean;
   canViewAbastecimento: boolean;
   canViewManutencao: boolean;
+  canViewMotoristas: boolean;
   canViewRelatorios: boolean;
+  canViewSecretarias: boolean;
+  canViewUsoVeiculo: boolean;
   canViewVeiculos: boolean;
   isFullAccess: boolean;
   keys: string[];
@@ -37,13 +45,21 @@ const fullAccess: FrotasPermissionAccess = {
   canCompleteManutencao: true,
   canManageAbastecimento: true,
   canManageManutencao: true,
+  canManageMotoristas: true,
+  canManageSecretarias: true,
   canManageVeiculos: true,
   canManageVencimentos: true,
+  canCancelUsoVeiculo: true,
+  canCreateUsoVeiculo: true,
+  canReturnUsoVeiculo: true,
   canUpdateManutencao: true,
   canUpdateVeiculos: true,
   canViewAbastecimento: true,
   canViewManutencao: true,
+  canViewMotoristas: true,
   canViewRelatorios: true,
+  canViewSecretarias: true,
+  canViewUsoVeiculo: true,
   canViewVeiculos: true,
   isFullAccess: true,
   keys: ["*"],
@@ -61,13 +77,21 @@ const limitedAccess: FrotasPermissionAccess = {
   canCompleteManutencao: false,
   canManageAbastecimento: false,
   canManageManutencao: false,
+  canManageMotoristas: false,
+  canManageSecretarias: false,
   canManageVeiculos: false,
   canManageVencimentos: false,
+  canCancelUsoVeiculo: false,
+  canCreateUsoVeiculo: false,
+  canReturnUsoVeiculo: false,
   canUpdateManutencao: false,
   canUpdateVeiculos: false,
   canViewAbastecimento: false,
   canViewManutencao: false,
+  canViewMotoristas: false,
   canViewRelatorios: false,
+  canViewSecretarias: false,
+  canViewUsoVeiculo: false,
   canViewVeiculos: false,
   isFullAccess: false,
   keys: [],
@@ -118,17 +142,25 @@ export async function getFrotasPermissionAccess(
     canManageAbastecimento: keys.has("fuel.manage"),
     canManageManutencao:
       keys.has("maintenance.complete") || keys.has("maintenance.cancel"),
+    canManageMotoristas: keys.has("drivers.manage"),
+    canManageSecretarias: keys.has("departments.manage"),
     canManageVencimentos: keys.has("expirations.manage"),
     canManageCadastros:
       keys.has("fuel_stations.manage") ||
       keys.has("drivers.manage") ||
       keys.has("departments.manage"),
     canManageVeiculos: keys.has("vehicles.manage"),
+    canCancelUsoVeiculo: keys.has("vehicle_usage.cancel"),
+    canCreateUsoVeiculo: keys.has("vehicle_usage.create"),
+    canReturnUsoVeiculo: keys.has("vehicle_usage.return"),
     canUpdateManutencao: keys.has("maintenance.update"),
     canUpdateVeiculos: keys.has("vehicles.update"),
     canViewAbastecimento: hasAnyPrefix(keys, "fuel."),
     canViewManutencao: hasAnyPrefix(keys, "maintenance."),
+    canViewMotoristas: hasAnyPrefix(keys, "drivers."),
     canViewRelatorios: keys.has("reports.read"),
+    canViewSecretarias: hasAnyPrefix(keys, "departments."),
+    canViewUsoVeiculo: hasAnyPrefix(keys, "vehicle_usage."),
     canViewVeiculos: hasAnyPrefix(keys, "vehicles."),
     isFullAccess: false,
     keys: Array.from(keys),

@@ -13,10 +13,13 @@ import {
   BadgeCheck,
   Car,
   CheckCircle2,
+  ClipboardCheck,
   Fuel,
+  KeyRound,
   Loader2,
   ShieldCheck,
   ShieldPlus,
+  UserRoundCog,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -52,8 +55,19 @@ const permissionGroups = [
   {
     description: "Controle de IPVA, licenciamento, seguro e pagamentos.",
     icon: ShieldCheck,
-    label: "Vencimentos",
+    label: "Débitos",
     keys: ["expirations.manage", "expirations.read"],
+  },
+  {
+    description: "Registro de retirada, devolução e cancelamento de uso.",
+    icon: KeyRound,
+    label: "Uso do Veículo",
+    keys: [
+      "vehicle_usage.read",
+      "vehicle_usage.create",
+      "vehicle_usage.return",
+      "vehicle_usage.cancel",
+    ],
   },
   {
     description: "Registro, edição, conclusão e histórico de manutenção.",
@@ -78,6 +92,18 @@ const permissionGroups = [
     icon: BadgeCheck,
     label: "Postos",
     keys: ["fuel_stations.read", "fuel_stations.manage"],
+  },
+  {
+    description: "Cadastro e gestão dos motoristas vinculados à frota.",
+    icon: UserRoundCog,
+    label: "Motoristas",
+    keys: ["drivers.read", "drivers.manage"],
+  },
+  {
+    description: "Cadastro e padronização das secretarias da prefeitura.",
+    icon: ClipboardCheck,
+    label: "Secretarias",
+    keys: ["departments.read", "departments.manage"],
   },
 ] satisfies PermissionGroup[];
 

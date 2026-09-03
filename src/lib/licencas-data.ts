@@ -2,6 +2,25 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type LicencaStatus = "active" | "suspended" | "expired" | "cancelled";
 export type LicencaVigenciaStatus = "active" | "expiring" | "expired";
+export type LicencaPagamentoStatus = "open" | "paid" | "overdue" | "cancelled";
+
+export type LicencaPagamento = {
+  competencia: string;
+  created_at: string;
+  documento: string | null;
+  forma_pagamento: string | null;
+  id: string;
+  licenca_id: string;
+  modulo_id: string;
+  numero_parcela: number;
+  observacoes: string | null;
+  pago_em: string | null;
+  prefeitura_id: string;
+  status: LicencaPagamentoStatus;
+  valor: number;
+  valor_pago: number | null;
+  vencimento: string;
+};
 
 export type Licenca = {
   id: string;
@@ -18,6 +37,11 @@ export type Licenca = {
   modulo_subdominio: string;
   dias_restantes: number;
   vigencia_status: LicencaVigenciaStatus;
+  pagamentos: LicencaPagamento[];
+  parcelas_abertas: number;
+  parcelas_pagas: number;
+  parcelas_vencidas: number;
+  valor_mensal: number | null;
 };
 
 type LicencaRow = {
@@ -70,7 +94,12 @@ export async function getLicencas(params?: { query?: string; status?: string }) 
     throw new Error(error.message);
   }
 
-  const rows = ((data ?? []) as unknown as LicencaRow[]).map((licenca) => {
+  const baseRows = (data ?? []) as unknown as LicencaRow[];
+  const pagamentosMap = await getLicencaPagamentosMap(
+    baseRows.map((licenca) => licenca.id)
+  );
+
+  const rows = baseRows.map((licenca) => {
     const dias_restantes = getDaysUntil(licenca.fim);
     const vigencia_status: LicencaVigenciaStatus =
       dias_restantes < 0
@@ -78,6 +107,7 @@ export async function getLicencas(params?: { query?: string; status?: string }) 
         : dias_restantes <= 30
           ? "expiring"
           : "active";
+    const pagamentos = pagamentosMap.get(licenca.id) ?? [];
 
     return {
       id: licenca.id,
@@ -94,6 +124,16 @@ export async function getLicencas(params?: { query?: string; status?: string }) 
       modulo_subdominio: licenca.modulos?.subdominio ?? "-",
       dias_restantes,
       vigencia_status,
+      pagamentos,
+      parcelas_abertas: pagamentos.filter((pagamento) => pagamento.status === "open")
+        .length,
+      parcelas_pagas: pagamentos.filter((pagamento) => pagamento.status === "paid")
+        .length,
+      parcelas_vencidas: pagamentos.filter(
+        (pagamento) => pagamento.status === "overdue"
+      ).length,
+      valor_mensal:
+        licenca.valor_anual === null ? null : Math.round((licenca.valor_anual / 12) * 100) / 100,
     };
   });
 
@@ -113,6 +153,48 @@ export async function getLicencas(params?: { query?: string; status?: string }) 
       .toLowerCase()
       .includes(normalizedQuery)
   );
+}
+
+async function getLicencaPagamentosMap(licencaIds: string[]) {
+  const pagamentosMap = new Map<string, LicencaPagamento[]>();
+
+  if (!licencaIds.length) {
+    return pagamentosMap;
+  }
+
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("licenca_pagamentos")
+    .select(
+      "id,licenca_id,prefeitura_id,modulo_id,numero_parcela,competencia,vencimento,valor,status,pago_em,valor_pago,forma_pagamento,documento,observacoes,created_at"
+    )
+    .in("licenca_id", licencaIds)
+    .order("numero_parcela", { ascending: true });
+
+  if (error) {
+    if (isMissingLicencaPagamentosTableError(error.message)) {
+      return pagamentosMap;
+    }
+
+    throw new Error(error.message);
+  }
+
+  const today = getTodayIsoDate();
+
+  ((data ?? []) as LicencaPagamento[]).forEach((pagamento) => {
+    const normalizedPagamento = {
+      ...pagamento,
+      status:
+        pagamento.status === "open" && pagamento.vencimento < today
+          ? "overdue"
+          : pagamento.status,
+    } satisfies LicencaPagamento;
+    const current = pagamentosMap.get(pagamento.licenca_id) ?? [];
+    current.push(normalizedPagamento);
+    pagamentosMap.set(pagamento.licenca_id, current);
+  });
+
+  return pagamentosMap;
 }
 
 export async function getLicencaFormOptions() {
@@ -182,6 +264,40 @@ export function formatDaysRemaining(days: number) {
   }
 
   return `Vence em ${days} dia(s)`;
+}
+
+export function formatLicencaPagamentoStatus(status: LicencaPagamentoStatus) {
+  const labels: Record<LicencaPagamentoStatus, string> = {
+    cancelled: "Cancelada",
+    open: "Aberta",
+    overdue: "Vencida",
+    paid: "Paga",
+  };
+
+  return labels[status];
+}
+
+function isMissingLicencaPagamentosTableError(message: string) {
+  return (
+    message.includes("licenca_pagamentos") &&
+    (message.includes("does not exist") ||
+      message.includes("Could not find the table") ||
+      message.includes("schema cache"))
+  );
+}
+
+function getTodayIsoDate() {
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+  }).formatToParts(new Date());
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+
+  return `${year}-${month}-${day}`;
 }
 
 function getDaysUntil(value: string) {

@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings,
   Trash2,
   X,
 } from "lucide-react";
@@ -326,6 +327,17 @@ export default async function PrefeiturasPage({ searchParams }: PageProps) {
                             </TableCell>
                             <TableCell>
                               <div className="flex justify-end gap-1">
+                                <Link
+                                  href={`/prefeituras/${prefeitura.id}`}
+                                  className={buttonVariants({
+                                    variant: "ghost",
+                                    size: "icon-sm",
+                                  })}
+                                  title="Gerenciar prefeitura"
+                                >
+                                  <Settings className="size-4" />
+                                </Link>
+
                                 <Dialog>
                                   <DialogTrigger
                                     className={buttonVariants({
