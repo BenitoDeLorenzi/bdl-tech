@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {alertaEstoque,ordenarAlertasEstoque} from '../src/lib/gestao-estoque-alertas.ts';
+const p=(saldo,minimo=100)=>({saldo,minimo,ativo:true,controlar_estoque:true});
+for(const [saldo,nivel] of [[250,'regular'],[150.001,'regular'],[150,'atencao'],[100.001,'atencao'],[100,'critico'],[50,'critico'],[0,'critico'],[-1,'critico']])assert.equal(alertaEstoque(p(saldo)).nivel,nivel,String(saldo));
+assert.equal(alertaEstoque(p(.15,.1)).nivel,'atencao');
+assert.equal(alertaEstoque(p(.151,.1)).nivel,'regular');
+assert.equal(alertaEstoque(p(1,0)).nivel,'regular');
+assert.equal(alertaEstoque(p(0,0)).nivel,'critico');
+assert.equal(alertaEstoque({...p(0),ativo:false}).nivel,'neutro');
+assert.equal(alertaEstoque({...p(0),controlar_estoque:false}).nivel,'neutro');
+assert.deepEqual([p(250),p(125),p(100),p(0)].sort(ordenarAlertasEstoque).map(x=>x.saldo),[0,100,125,250]);
+console.log('PASS: boundaries, fractions, minimum zero, inactive/uncontrolled products, alert priority.');

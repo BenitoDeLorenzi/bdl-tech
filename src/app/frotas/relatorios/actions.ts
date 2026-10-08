@@ -54,7 +54,7 @@ export async function createRelatorio(
   }
 
   if (!prefeituraId) {
-    return { error: "Selecione uma prefeitura para gerar o relatório." };
+    return { error: "Selecione uma empresa para gerar o relatório." };
   }
 
   if (tipo !== "vehicles" && (!periodoInicio || !periodoFim)) {
@@ -68,7 +68,6 @@ export async function createRelatorio(
   const filtros: RelatorioFiltros = {
     combustivel: getOptionalValue(formData, "combustivel"),
     posto_id: getOptionalValue(formData, "posto_id"),
-    secretaria: getOptionalValue(formData, "secretaria"),
     status: getOptionalValue(formData, "status") ?? "all",
     veiculo_id: getOptionalValue(formData, "veiculo_id"),
     vencimento_tipo: getOptionalValue(formData, "vencimento_tipo") as
@@ -115,6 +114,9 @@ export async function createRelatorio(
 
 export async function deleteRelatorio(formData: FormData) {
   const profile = await requireUserProfile();
+  if (profile.role !== "bdl_admin") {
+    redirect(`/frotas/relatorios?error=${encodeURIComponent("Somente o usuário Master pode excluir relatórios.")}`);
+  }
   const allowed = await hasFrotasPermission(profile, "reports.read");
 
   if (!allowed) {
@@ -136,11 +138,7 @@ export async function deleteRelatorio(formData: FormData) {
   }
 
   const supabase = createSupabaseServerClient();
-  let query = supabase.from("frota_relatorios").delete().eq("id", id);
-
-  if (profile.role !== "bdl_admin") {
-    query = query.eq("prefeitura_id", profile.prefeitura_id ?? "");
-  }
+  const query = supabase.from("frota_relatorios").delete().eq("id", id);
 
   const { error } = await query;
 

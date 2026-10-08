@@ -237,10 +237,11 @@ export default async function VeiculoDebitosPage({
                             <div className="font-medium">
                               {debito.title ?? "Débito veicular"}
                             </div>
-                            <div className="max-w-[260px] truncate text-xs text-muted-foreground">
+                            <div className="max-w-[420px] whitespace-normal text-xs text-muted-foreground">
                               {formatExternalDebtType(debito.type)}
                               {debito.description ? ` · ${debito.description}` : ""}
                             </div>
+                            {debito.year ? <div className="text-xs text-muted-foreground">Exercício {debito.year}</div> : null}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -260,7 +261,7 @@ export default async function VeiculoDebitosPage({
                           </span>
                         </TableCell>
                         <TableCell>
-                          <DebtOriginBadge origem="api" />
+                          <DebtOriginBadge origem={debito.provider ?? "api"} />
                         </TableCell>
                         <TableCell>
                           <div className="text-right text-xs text-muted-foreground">
@@ -279,8 +280,7 @@ export default async function VeiculoDebitosPage({
                   Nenhum débito encontrado
                 </h3>
                 <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                  Cadastre um débito manualmente ou aguarde o retorno da
-                  consulta automática quando a integração estiver ativa.
+                  Nenhum débito cadastrado para este veículo.
                 </p>
               </div>
             )}
@@ -582,7 +582,7 @@ function DebtOriginBadge({ origem }: { origem: string }) {
           : "border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100"
       }
     >
-      {isAutomatic ? "Automático" : "Manual"}
+      {origem === "plexi" ? "Plexi" : isAutomatic ? "Importado" : "Manual"}
     </Badge>
   );
 }

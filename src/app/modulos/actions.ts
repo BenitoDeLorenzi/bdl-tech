@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requireRole } from "@/lib/auth-data";
 
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -14,6 +15,7 @@ export async function createModulo(
   _previousState: ModuloActionState,
   formData: FormData
 ): Promise<ModuloActionState> {
+  await requireRole(["bdl_admin"]);
   const payload = getModuloPayload(formData);
 
   if ("error" in payload) {
@@ -37,6 +39,7 @@ export async function updateModulo(
   _previousState: ModuloActionState,
   formData: FormData
 ): Promise<ModuloActionState> {
+  await requireRole(["bdl_admin"]);
   const id = getRequiredValue(formData, "id");
 
   if (!id) {
@@ -63,6 +66,7 @@ export async function updateModulo(
 }
 
 export async function deleteModulo(formData: FormData) {
+  await requireRole(["bdl_admin"]);
   const id = getRequiredValue(formData, "id");
 
   const supabase = createSupabaseServerClient();

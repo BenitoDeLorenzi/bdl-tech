@@ -120,7 +120,7 @@ export default async function RelatorioDetailsPage({
                 {relatorio.prefeitura_brasao_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    alt={`Brasão de ${relatorio.prefeitura_nome}`}
+                    alt={`Logo de ${relatorio.prefeitura_nome}`}
                     className="size-16 rounded-lg border object-contain p-1 print:size-11"
                     src={relatorio.prefeitura_brasao_url}
                   />
@@ -308,7 +308,6 @@ function VehiclesTable({ items }: { items: FrotaVeiculo[] }) {
             <TableHead>Veículo</TableHead>
             <TableHead>Placa</TableHead>
             <TableHead>Renavam</TableHead>
-            <TableHead>Secretaria</TableHead>
             <TableHead>Combustível</TableHead>
             <TableHead>Km</TableHead>
             <TableHead>Status</TableHead>
@@ -322,7 +321,6 @@ function VehiclesTable({ items }: { items: FrotaVeiculo[] }) {
               </TableCell>
               <TableCell>{item.placa}</TableCell>
               <TableCell>{item.renavam ?? "-"}</TableCell>
-              <TableCell>{item.secretaria || "-"}</TableCell>
               <TableCell>{item.combustivel ?? "-"}</TableCell>
               <TableCell>{formatNumber(item.quilometragem ?? 0)}</TableCell>
               <TableCell>{formatVeiculoStatus(item.status)}</TableCell>

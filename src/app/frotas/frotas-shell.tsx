@@ -1,8 +1,14 @@
+import {
+  sidebarFooterClass,
+  sidebarNavClass,
+} from "@/components/sidebar-styles";
+import { redirect } from "next/navigation";
+import { hasModuleAccess } from "@/lib/empresa-access";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { FrotasPrefeituraContext } from "@/app/frotas/frotas-prefeitura-context";
 import { SidebarUserMenu } from "@/components/sidebar-user-menu";
-import { Separator } from "@/components/ui/separator";
+import { HeaderSeparator } from "@/components/header-separator";
 import {
   Sidebar,
   SidebarContent,
@@ -21,15 +27,12 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
-  Bell,
   Car,
   ChartNoAxesCombined,
-  ClipboardCheck,
   Fuel,
   KeyRound,
   LayoutDashboard,
   Settings,
-  ShieldCheck,
   UserRoundCog,
   Wrench,
   type LucideIcon,
@@ -45,9 +48,9 @@ type FrotasShellProps = {
     | "uso-veiculo"
     | "manutencao"
     | "abastecimento"
+    | "oficinas"
     | "postos"
     | "motoristas"
-    | "secretarias"
     | "relatorios"
     | "alertas";
   actions?: ReactNode;
@@ -68,14 +71,34 @@ const navOperacoes = [
     href: "/frotas/uso-veiculo",
     icon: KeyRound,
   },
-  { key: "manutencao", label: "Manutenção", href: "/frotas/manutencao", icon: Wrench },
-  { key: "abastecimento", label: "Abastecimento", href: "/frotas/abastecimento", icon: Fuel },
+  {
+    key: "manutencao",
+    label: "Manutenção",
+    href: "/frotas/manutencao",
+    icon: Wrench,
+  },
+  {
+    key: "abastecimento",
+    label: "Abastecimento",
+    href: "/frotas/abastecimento",
+    icon: Fuel,
+  },
 ] as const;
 
 const navCadastros = [
-  { key: "postos", label: "Postos de Combustível", href: "/frotas/postos", icon: Fuel },
-  { key: "motoristas", label: "Motoristas", href: "/frotas/motoristas", icon: UserRoundCog },
-  { key: "secretarias", label: "Secretarias", href: "/frotas/secretarias", icon: ClipboardCheck },
+  { key: "oficinas", label: "Oficinas", href: "/frotas/oficinas", icon: Wrench },
+  {
+    key: "postos",
+    label: "Postos de Combustível",
+    href: "/frotas/postos",
+    icon: Fuel,
+  },
+  {
+    key: "motoristas",
+    label: "Motoristas",
+    href: "/frotas/motoristas",
+    icon: UserRoundCog,
+  },
 ] as const;
 
 const navAdministracao = [
@@ -85,7 +108,6 @@ const navAdministracao = [
     href: "/frotas/relatorios",
     icon: ChartNoAxesCombined,
   },
-  { key: "alertas", label: "Alertas", href: "/frotas/alertas", icon: Bell },
   { label: "Configurações", href: "#", icon: Settings },
 ] as const;
 
@@ -99,6 +121,7 @@ export async function FrotasShell({
   selectedPrefeituraId,
   title,
 }: FrotasShellProps) {
+  if (!(await hasModuleAccess(profile, "frotas-publicas"))) redirect("/portal");
   const access = await getFrotasPermissionAccess(profile);
   const visibleOperacoes = navOperacoes.filter((item) => {
     if (item.key === "dashboard") {
@@ -132,6 +155,8 @@ export async function FrotasShell({
       return false;
     }
 
+    if (item.key === "oficinas") return access.keys.includes("workshops.read") || access.keys.includes("workshops.manage");
+
     if (item.key === "postos") {
       return (
         access.keys.includes("fuel_stations.read") ||
@@ -143,19 +168,11 @@ export async function FrotasShell({
       return access.canViewMotoristas;
     }
 
-    if (item.key === "secretarias") {
-      return access.canViewSecretarias;
-    }
-
     return false;
   });
   const visibleAdministracao = navAdministracao.filter((item) => {
     if ("key" in item && item.key === "relatorios") {
       return access.canViewRelatorios;
-    }
-
-    if ("key" in item && item.key === "alertas") {
-      return access.isFullAccess;
     }
 
     return access.isFullAccess;
@@ -179,6 +196,7 @@ export async function FrotasShell({
                 {visibleOperacoes.map((item) => (
                   <SidebarMenuItem key={item.key}>
                     <SidebarMenuButton
+                      className={sidebarNavClass}
                       isActive={active === item.key}
                       tooltip={item.label}
                       render={<Link href={item.href} />}
@@ -201,6 +219,7 @@ export async function FrotasShell({
                     {visibleCadastros.map((item) => (
                       <SidebarMenuItem key={item.label}>
                         <SidebarMenuButton
+                          className={sidebarNavClass}
                           isActive={"key" in item && active === item.key}
                           tooltip={item.label}
                           render={<Link href={item.href} />}
@@ -225,6 +244,7 @@ export async function FrotasShell({
                     {visibleAdministracao.map((item) => (
                       <SidebarMenuItem key={item.label}>
                         <SidebarMenuButton
+                          className={sidebarNavClass}
                           isActive={"key" in item && active === item.key}
                           tooltip={item.label}
                           render={<Link href={item.href} />}
@@ -240,28 +260,12 @@ export async function FrotasShell({
             </>
           ) : null}
         </SidebarContent>
-        <SidebarFooter>
+        <SidebarFooter className={sidebarFooterClass}>
           <SidebarMenu>
             <SidebarUserMenu
+              emphasized
               profile={profile}
-              tooltip="Conta Frotas Públicas"
-              links={[
-                {
-                  href: "/portal",
-                  icon: LayoutDashboard,
-                  label: "Portal de módulos",
-                },
-                {
-                  href: "/",
-                  icon: ShieldCheck,
-                  label: "Painel BDL Tech",
-                },
-                {
-                  href: "#",
-                  icon: UserRoundCog,
-                  label: "Meu perfil",
-                },
-              ]}
+              tooltip="Conta Vibe Frotas"
             />
           </SidebarMenu>
         </SidebarFooter>
@@ -271,7 +275,7 @@ export async function FrotasShell({
       <SidebarInset className="min-h-0 overflow-hidden print:m-0 print:block print:min-h-0 print:w-full print:overflow-visible print:rounded-none print:bg-white print:shadow-none">
         <header className="flex h-16 shrink-0 items-center gap-3 border-b px-4 print:hidden">
           <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="h-4" />
+          <HeaderSeparator />
           <div className="flex min-w-0 shrink-0 items-center gap-2">
             {Icon ? <Icon className="size-5 text-muted-foreground" /> : null}
             <h1 className="truncate text-xl font-semibold tracking-normal">

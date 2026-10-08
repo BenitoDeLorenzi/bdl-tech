@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogCancel } from "@/components/form-dialog-cancel";
+
 import { startTransition, useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
@@ -76,7 +78,7 @@ export function DevolucaoForm({ uso }: DevolucaoFormProps) {
         <FieldGroup className="gap-4">
           <div className="grid gap-2 rounded-lg border bg-muted/25 p-3 text-sm sm:grid-cols-3">
             <CompactInfo label="Veículo" value={`${uso.modelo} · ${uso.placa}`} />
-            <CompactInfo label="Funcionário" value={uso.funcionario_nome} />
+            <CompactInfo label="Motorista" value={uso.funcionario_nome} />
             <CompactInfo
               label="Km saída"
               value={`${formatNumber(uso.km_saida)} km`}
@@ -127,6 +129,7 @@ export function DevolucaoForm({ uso }: DevolucaoFormProps) {
       </fieldset>
 
       <DialogFooter>
+        <FormDialogCancel disabled={actionPending} />
         <Button type="submit" className="gap-2" disabled={actionPending}>
           {actionPending ? (
             <Loader2 className="size-4 animate-spin" />

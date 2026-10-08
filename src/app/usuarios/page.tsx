@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AdminShell } from "@/components/admin-shell";
-import { PrefeituraFilterCombobox } from "@/components/prefeitura-filter-combobox";
+import { EmpresaFilterCombobox } from "@/components/empresa-filter-combobox";
 import {
   CircleCheck,
   CircleX,
@@ -61,6 +61,7 @@ type PageProps = {
     deleted?: string;
     error?: string;
     prefeitura?: string;
+    empresa?: string;
     q?: string;
   }>;
 };
@@ -71,7 +72,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const [usuarios, formOptions] = await Promise.all([
     getUsuarios({
-      prefeituraId: params.prefeitura,
+      prefeituraId: params.empresa ?? params.prefeitura,
       query: params.q,
     }),
     getUsuarioFormOptions(),
@@ -79,7 +80,9 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
   const accessMap = await getUsuariosAccessMap(usuarios);
   const activeCount = usuarios.filter((usuario) => usuario.ativo).length;
   const searchTerm = params.q?.trim();
-  const hasActiveFilters = Boolean(searchTerm || params.prefeitura);
+  const hasActiveFilters = Boolean(
+    searchTerm || (params.empresa ?? params.prefeitura),
+  );
 
   return (
     <AdminShell
@@ -99,8 +102,12 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                 defaultValue={params.q}
               />
             </div>
-            {params.prefeitura ? (
-              <input type="hidden" name="prefeitura" value={params.prefeitura} />
+            {(params.empresa ?? params.prefeitura) ? (
+              <input
+                type="hidden"
+                name="empresa"
+                value={params.empresa ?? params.prefeitura}
+              />
             ) : null}
             {hasActiveFilters ? (
               <Link
@@ -121,17 +128,23 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
             )}
           </form>
 
-          <PrefeituraFilterCombobox
+          <EmpresaFilterCombobox
             className="hidden w-[260px] shrink-0 xl:block"
-            prefeituras={formOptions.prefeituras}
-            selectedPrefeituraId={params.prefeitura}
+            empresas={formOptions.prefeituras}
+            selectedEmpresaId={params.empresa ?? params.prefeitura}
           />
 
           <div className="hidden shrink-0 items-center gap-1.5 2xl:flex">
-            <Badge variant="outline" className="h-7 border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100">
+            <Badge
+              variant="outline"
+              className="h-7 border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100"
+            >
               {usuarios.length} total
             </Badge>
-            <Badge variant="outline" className="h-7 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+            <Badge
+              variant="outline"
+              className="h-7 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
+            >
               {activeCount} ativos
             </Badge>
           </div>
@@ -157,181 +170,180 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
     >
       <UsuariosToasts deleted={params.deleted} error={params.error} />
       <main className="flex flex-1 flex-col gap-3 p-4 md:p-4">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-lg border bg-muted/40">
-                    <Users className="size-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <CardTitle>Lista de usuários</CardTitle>
-                    <CardDescription>
-                      Acessos administrativos e municipais do portal.
-                    </CardDescription>
-                  </div>
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 items-center justify-center rounded-lg border bg-muted/40">
+                  <Users className="size-5 text-muted-foreground" />
                 </div>
-                <Badge variant="outline">{usuarios.length} registro(s)</Badge>
+                <div>
+                  <CardTitle>Lista de usuários</CardTitle>
+                  <CardDescription>
+                    Usuários, empresas e permissões de acesso aos módulos.
+                  </CardDescription>
+                </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              {usuarios.length ? (
-                <div className="overflow-hidden rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead>Usuário</TableHead>
-                        <TableHead>Acesso</TableHead>
-                        <TableHead>Prefeitura</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Criado em</TableHead>
-                        <TableHead className="w-[92px] text-right">
-                          Ações
-                        </TableHead>
+              <Badge variant="outline">{usuarios.length} registro(s)</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {usuarios.length ? (
+              <div className="overflow-hidden rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Usuário</TableHead>
+                      <TableHead>Acesso</TableHead>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Criado em</TableHead>
+                      <TableHead className="w-[92px] text-right">
+                        Ações
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {usuarios.map((usuario) => (
+                      <TableRow key={usuario.id}>
+                        <TableCell>
+                          <div className="font-medium">{usuario.nome}</div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            CPF {formatCpf(usuario.cpf)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <UsuarioRoleBadge role={usuario.role} />
+                        </TableCell>
+                        <TableCell>
+                          {usuario.prefeitura_nome ?? "Vibe Tech"}
+                        </TableCell>
+                        <TableCell>
+                          <UsuarioStatusBadge ativo={usuario.ativo} />
+                        </TableCell>
+                        <TableCell>
+                          {new Intl.DateTimeFormat("pt-BR").format(
+                            new Date(usuario.created_at),
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            <Dialog>
+                              <DialogTrigger
+                                className={buttonVariants({
+                                  variant: "ghost",
+                                  size: "icon-sm",
+                                })}
+                                title="Editar usuário"
+                              >
+                                <Pencil className="size-4" />
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-lg">
+                                <DialogHeader>
+                                  <DialogTitle>Editar usuário</DialogTitle>
+                                </DialogHeader>
+                                <UsuarioForm
+                                  prefeituras={formOptions.prefeituras}
+                                  usuario={usuario}
+                                />
+                              </DialogContent>
+                            </Dialog>
+
+                            <Dialog>
+                              <DialogTrigger
+                                className={buttonVariants({
+                                  variant: "ghost",
+                                  size: "icon-sm",
+                                })}
+                                title="Gerenciar permissões"
+                              >
+                                <ShieldCheck className="size-4" />
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-3xl">
+                                <DialogHeader>
+                                  <DialogTitle>
+                                    Permissões de {usuario.nome}
+                                  </DialogTitle>
+                                  <DialogDescription>
+                                    Defina os módulos e permissões liberados
+                                    para este acesso.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <UsuarioAcessosForm
+                                  acessos={accessMap[usuario.id] ?? []}
+                                  usuario={usuario}
+                                />
+                              </DialogContent>
+                            </Dialog>
+
+                            <Dialog>
+                              <DialogTrigger
+                                className={buttonVariants({
+                                  variant: "destructive",
+                                  size: "icon-sm",
+                                })}
+                                title="Excluir usuário"
+                              >
+                                <Trash2 className="size-4" />
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle>Excluir usuário</DialogTitle>
+                                  <DialogDescription>
+                                    Esta ação remove o acesso de {usuario.nome}
+                                    do portal.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <DeleteUsuarioForm id={usuario.id} />
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {usuarios.map((usuario) => (
-                        <TableRow key={usuario.id}>
-                          <TableCell>
-                            <div className="font-medium">{usuario.nome}</div>
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              CPF {formatCpf(usuario.cpf)}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <UsuarioRoleBadge role={usuario.role} />
-                          </TableCell>
-                          <TableCell>
-                            {usuario.prefeitura_nome ?? "BDL Tech"}
-                          </TableCell>
-                          <TableCell>
-                            <UsuarioStatusBadge ativo={usuario.ativo} />
-                          </TableCell>
-                          <TableCell>
-                            {new Intl.DateTimeFormat("pt-BR").format(
-                              new Date(usuario.created_at)
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex justify-end gap-1">
-                              <Dialog>
-                                <DialogTrigger
-                                  className={buttonVariants({
-                                    variant: "ghost",
-                                    size: "icon-sm",
-                                  })}
-                                  title="Editar usuário"
-                                >
-                                  <Pencil className="size-4" />
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-lg">
-                                  <DialogHeader>
-                                    <DialogTitle>Editar usuário</DialogTitle>
-                                  </DialogHeader>
-                                  <UsuarioForm
-                                    prefeituras={formOptions.prefeituras}
-                                    usuario={usuario}
-                                  />
-                                </DialogContent>
-                              </Dialog>
-
-                              <Dialog>
-                                <DialogTrigger
-                                  className={buttonVariants({
-                                    variant: "ghost",
-                                    size: "icon-sm",
-                                  })}
-                                  title="Gerenciar permissões"
-                                >
-                                  <ShieldCheck className="size-4" />
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-3xl">
-                                  <DialogHeader>
-                                    <DialogTitle>
-                                      Permissões de {usuario.nome}
-                                    </DialogTitle>
-                                    <DialogDescription>
-                                      Defina os módulos e permissões liberados
-                                      para este acesso.
-                                    </DialogDescription>
-                                  </DialogHeader>
-                                  <UsuarioAcessosForm
-                                    acessos={accessMap[usuario.id] ?? []}
-                                    usuario={usuario}
-                                  />
-                                </DialogContent>
-                              </Dialog>
-
-                              <Dialog>
-                                <DialogTrigger
-                                  className={buttonVariants({
-                                    variant: "destructive",
-                                    size: "icon-sm",
-                                  })}
-                                  title="Excluir usuário"
-                                >
-                                  <Trash2 className="size-4" />
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-md">
-                                  <DialogHeader>
-                                    <DialogTitle>Excluir usuário</DialogTitle>
-                                    <DialogDescription>
-                                      Esta ação remove o acesso de {usuario.nome}
-                                      do portal.
-                                    </DialogDescription>
-                                  </DialogHeader>
-                                  <DeleteUsuarioForm id={usuario.id} />
-                                </DialogContent>
-                              </Dialog>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border bg-muted/20 p-8 text-center">
+                <div className="flex size-12 items-center justify-center rounded-lg border bg-background">
+                  <Users className="size-6 text-muted-foreground" />
                 </div>
-              ) : (
-                <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border bg-muted/20 p-8 text-center">
-                  <div className="flex size-12 items-center justify-center rounded-lg border bg-background">
-                    <Users className="size-6 text-muted-foreground" />
-                  </div>
-                  <h3 className="mt-4 text-base font-semibold">
-                    Nenhum usuário encontrado
-                  </h3>
-                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    Cadastre usuários BDL ou municipais para controlar o acesso
-                    ao portal.
-                  </p>
-                  <Dialog>
-                    <DialogTrigger
-                      className={buttonVariants({
-                        className: "mt-4 gap-2",
-                      })}
-                    >
-                      <Plus className="size-4" />
-                      Cadastrar usuário
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-lg">
-                      <DialogHeader>
-                        <DialogTitle>Novo usuário</DialogTitle>
-                      </DialogHeader>
-                      <UsuarioForm prefeituras={formOptions.prefeituras} />
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </main>
+                <h3 className="mt-4 text-base font-semibold">
+                  Nenhum usuário encontrado
+                </h3>
+                <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                  Cadastre usuários Vibe Tech ou das empresas para controlar o
+                  acesso ao portal.
+                </p>
+                <Dialog>
+                  <DialogTrigger
+                    className={buttonVariants({
+                      className: "mt-4 gap-2",
+                    })}
+                  >
+                    <Plus className="size-4" />
+                    Cadastrar usuário
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>Novo usuário</DialogTitle>
+                    </DialogHeader>
+                    <UsuarioForm prefeituras={formOptions.prefeituras} />
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </main>
     </AdminShell>
   );
 }
 
 function UsuarioRoleBadge({ role }: { role: UsuarioRole }) {
   const styles: Record<UsuarioRole, string> = {
-    bdl_admin:
-      "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50",
+    bdl_admin: "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50",
     municipal_admin:
       "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-50",
     municipal_user:

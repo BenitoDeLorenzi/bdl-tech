@@ -126,7 +126,7 @@ export function ModuloForm({ modulo }: ModuloFormProps) {
             <FieldLabel htmlFor="nome">Nome</FieldLabel>
             <Input
               id="nome"
-              placeholder="Frotas Públicas"
+              placeholder="Vibe Frotas"
               aria-invalid={Boolean(form.formState.errors.nome)}
               {...form.register("nome", {
                 required: "Informe o nome do módulo.",
@@ -157,7 +157,7 @@ export function ModuloForm({ modulo }: ModuloFormProps) {
               <FieldLabel htmlFor="slug">Slug</FieldLabel>
               <Input
                 id="slug"
-                placeholder="frotas-publicas"
+                placeholder="vibe-frotas"
                 aria-invalid={Boolean(form.formState.errors.slug)}
                 {...form.register("slug", {
                   required: "Informe o slug.",
@@ -219,7 +219,7 @@ export function ModuloForm({ modulo }: ModuloFormProps) {
             <FieldLabel htmlFor="subdominio">Subdomínio</FieldLabel>
             <Input
               id="subdominio"
-              placeholder="frotaspublicas.bdltech.com.br"
+              placeholder="frotas.exemplo.com.br"
               aria-invalid={Boolean(form.formState.errors.subdominio)}
               {...form.register("subdominio", {
                 required: "Informe o subdomínio.",

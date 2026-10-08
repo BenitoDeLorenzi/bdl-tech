@@ -57,25 +57,25 @@ type PerfilRow = {
 
 const fallbackPrefeituras: PrefeituraResumo[] = [
   {
-    nome: "Prefeitura de Santa Helena",
+    nome: "Empresa de Santa Helena",
     cnpj: "12.345.678/0001-90",
-    modulos: ["Frotas Públicas"],
+    modulos: ["Vibe Frotas"],
     usuarios: 8,
     status: "Ativa",
     vencimento: "14/08/2027",
   },
   {
-    nome: "Prefeitura de Nova Esperança",
+    nome: "Empresa de Nova Esperança",
     cnpj: "23.456.789/0001-01",
-    modulos: ["Frotas Públicas", "Contratos"],
+    modulos: ["Vibe Frotas", "Contratos"],
     usuarios: 12,
     status: "Ativa",
     vencimento: "30/11/2027",
   },
   {
-    nome: "Prefeitura de Lago Verde",
+    nome: "Empresa de Lago Verde",
     cnpj: "34.567.890/0001-12",
-    modulos: ["Frotas Públicas"],
+    modulos: ["Vibe Frotas"],
     usuarios: 5,
     status: "Ativa",
     vencimento: "05/02/2027",
@@ -84,7 +84,7 @@ const fallbackPrefeituras: PrefeituraResumo[] = [
 
 const fallbackModulos: ModuloResumo[] = [
   {
-    nome: "Frotas Públicas",
+    nome: "Vibe Frotas",
     subdominio: "frotaspublicas.bdltech.com.br",
     clientes: 3,
     status: "Disponível",
@@ -118,7 +118,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     licencasResult,
     perfisResult,
   ] = await Promise.all([
-    supabase.from("prefeituras").select("id,nome,cnpj,status").order("nome"),
+    supabase.from("empresas").select("id,nome,cnpj,status").order("nome"),
     supabase.from("modulos").select("id,nome,subdominio,ativo").order("nome"),
     supabase
       .from("licencas")
@@ -205,7 +205,7 @@ function buildMetrics(
 
   return [
     {
-      label: "Prefeituras",
+      label: "Empresas",
       valor: String(prefeituras.length),
       detalhe: `${prefeituras.filter((item) => item.status === "Ativa").length} ativas`,
     },
@@ -215,9 +215,9 @@ function buildMetrics(
       detalhe: "Validade anual por módulo",
     },
     {
-      label: "Usuários municipais",
+      label: "Usuários das empresas",
       valor: String(usuarios),
-      detalhe: "Vinculados por prefeitura",
+      detalhe: "Vinculados por empresa",
     },
     {
       label: "Receita prevista",

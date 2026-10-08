@@ -1,3 +1,6 @@
+import { OrdensRealtime } from "./ordens-realtime";
+import Link from "next/link";
+import { ListMetrics } from "@/components/list-metrics";
 import {
   BadgeCheck,
   Building2,
@@ -8,7 +11,7 @@ import {
   LogOut,
   ReceiptText,
   Search,
-  SquareCheckBig,
+  CircleCheck,
 } from "lucide-react";
 
 import { AbastecimentoCompleteForm } from "@/app/frotas/abastecimento-complete-form";
@@ -29,7 +32,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import {
   formatFrotaDate,
   getAbastecimentosData,
@@ -56,18 +58,19 @@ export default async function PortalPostoPage({ searchParams }: PageProps) {
     status: "issued",
   });
   const ordens = data.abastecimentos;
+  const nextExpiry = ordens.map(item => item.expires_at).filter((value): value is string => Boolean(value)).sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null;
   const prefeitura = data.prefeituras.find(
     (item) => item.id === session.prefeitura_id
   );
-  const prefeituraNome = prefeitura?.nome ?? ordens[0]?.prefeitura_nome ?? "Prefeitura";
+  const prefeituraNome = prefeitura?.nome ?? ordens[0]?.prefeitura_nome ?? "Empresa";
   const ordensVencendoHoje = ordens.filter((ordem) =>
     isTodayOrPast(ordem.expires_at)
   ).length;
   const veiculosUnicos = new Set(ordens.map((ordem) => ordem.veiculo_id)).size;
 
   return (
-    <main className="min-h-screen bg-muted/30 p-4">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4">
+    <main className="min-h-screen bg-muted/25 p-4 sm:p-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-5">
         <header className="overflow-hidden rounded-xl border bg-background">
           <div className="grid gap-4 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
             <div className="flex min-w-0 items-center gap-4">
@@ -75,20 +78,21 @@ export default async function PortalPostoPage({ searchParams }: PageProps) {
                 <Fuel className="size-6" />
               </div>
               <div className="min-w-0">
+                <div className="mb-1 text-xs text-muted-foreground">Vibe Frotas · Portal do posto</div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate text-2xl font-semibold tracking-normal">
+                  <h1 className="truncate text-xl font-semibold tracking-tight">
                     {session.nome}
                   </h1>
                   <Badge
                     variant="outline"
-                    className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
+                    className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400"
                   >
                     <BadgeCheck className="size-3" />
                     Credenciado
                   </Badge>
                 </div>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
-                  CNPJ {formatCnpj(session.cnpj)} · Portal do posto
+                  CNPJ {formatCnpj(session.cnpj)}
                 </p>
               </div>
             </div>
@@ -99,7 +103,7 @@ export default async function PortalPostoPage({ searchParams }: PageProps) {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={prefeitura.brasao_url}
-                    alt={`Brasão de ${prefeituraNome}`}
+                    alt={`Logo de ${prefeituraNome}`}
                     className="size-11 shrink-0 rounded-md object-contain"
                   />
                 ) : (
@@ -109,10 +113,10 @@ export default async function PortalPostoPage({ searchParams }: PageProps) {
                 )}
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">
-                    {formatMunicipalityName(prefeituraNome)}
+                    {prefeituraNome}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    Frotas Públicas
+                    Vibe Frotas
                   </div>
                 </div>
               </div>
@@ -149,8 +153,9 @@ export default async function PortalPostoPage({ searchParams }: PageProps) {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <CardTitle>Ordens pendentes</CardTitle>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  {session.nome} · {ordens.length} ordem(ns)
+                <div className="mt-2"><OrdensRealtime nextExpiry={nextExpiry} /></div>
+                <div className="mt-3">
+                  <ListMetrics items={[{ label: params.q ? "Encontradas" : "Pendentes", value: ordens.length, tone: "inUse" }]} />
                 </div>
               </div>
               <PortalPostoFilters q={params.q} />
@@ -167,11 +172,10 @@ export default async function PortalPostoPage({ searchParams }: PageProps) {
               <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border bg-muted/20 p-8 text-center">
                 <Building2 className="size-10 text-muted-foreground" />
                 <h2 className="mt-3 text-base font-semibold">
-                  Nenhuma ordem pendente
+                  {params.q ? "Nenhuma ordem encontrada" : "Tudo em dia"}
                 </h2>
                 <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                  Não há abastecimentos aguardando preenchimento para este
-                  posto no momento.
+                  {params.q ? "Tente outro número de ordem, placa ou veículo." : "As novas ordens autorizadas aparecerão aqui para atendimento."}
                 </p>
               </div>
             )}
@@ -193,8 +197,8 @@ function SummaryCard({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-background p-4">
-      <div className="flex size-10 items-center justify-center rounded-lg bg-muted/50">
-        <Icon className="size-5 text-muted-foreground" />
+      <div className="flex size-10 items-center justify-center rounded-lg bg-sky-500/10">
+        <Icon className="size-5 text-sky-700 dark:text-sky-400" />
       </div>
       <div>
         <div className="text-sm text-muted-foreground">{label}</div>
@@ -216,6 +220,7 @@ function PortalPostoFilters({
         <Input
           className="h-9 pl-9"
           name="q"
+          aria-label="Buscar por ordem, placa ou veículo"
           placeholder="Buscar por ordem, placa ou veículo"
           defaultValue={q}
         />
@@ -224,6 +229,7 @@ function PortalPostoFilters({
         <Search className="size-4" />
         Buscar
       </Button>
+      {q ? <Link href="/frotas/posto" className={buttonVariants({ variant: "outline", className: "h-9" })}>Limpar</Link> : null}
     </form>
   );
 }
@@ -232,67 +238,31 @@ function OrdemPostoCard({ ordem }: { ordem: FrotaAbastecimento }) {
   const validade = ordem.expires_at ? formatDateTime(ordem.expires_at) : "-";
 
   return (
-    <div className="grid gap-3 rounded-xl border bg-background p-4 lg:grid-cols-[1fr_auto] lg:items-center">
-      <div className="min-w-0">
+    <article className="overflow-hidden rounded-xl border bg-background">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/25 px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="text-base font-semibold">{ordem.numero_ordem}</div>
-          <Badge
-            variant="outline"
-            className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50"
-          >
-            <Clock className="size-3" />
-            Pendente
-          </Badge>
-          {ordem.arla_incluso ? <Badge variant="secondary">ARLA</Badge> : null}
+          <ReceiptText className="size-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">{ordem.numero_ordem}</h2>
+          <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400"><Clock />Pendente</Badge>
         </div>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/50">
-              <Car className="size-5 text-muted-foreground" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xl font-semibold tracking-normal">
-                {ordem.placa}
-              </div>
-              <div className="truncate text-sm text-muted-foreground">
-                {ordem.modelo} · {ordem.marca}
-                {ordem.ano ? ` · ${ordem.ano}` : ""}
-              </div>
-            </div>
-          </div>
-          <Info label="Validade" value={validade} />
-        </div>
-        <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-          <Info label="Motorista" value={ordem.motorista} />
-          <Info label="Combustível" value={ordem.combustivel} />
-          <Info label="Secretaria" value={ordem.secretaria} />
-        </div>
-        <Separator className="my-3" />
-        <div className="text-xs text-muted-foreground">
-          Emitida em {formatFrotaDate(ordem.data_abastecimento)} por{" "}
-          {ordem.emitido_por ?? "-"} · {ordem.secretaria}
-        </div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><CalendarClock className="size-3.5" />Válida até {validade}</div>
       </div>
-      <Dialog>
-        <DialogTrigger
-          className={buttonVariants({
-            className: "h-9 gap-2 justify-self-start lg:justify-self-end",
-          })}
-        >
-          <SquareCheckBig className="size-4" />
-          Concluir ordem
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Concluir ordem</DialogTitle>
-            <DialogDescription>
-              Informe os dados reais do abastecimento de {ordem.placa}.
-            </DialogDescription>
-          </DialogHeader>
-          <AbastecimentoCompleteForm abastecimento={ordem} />
-        </DialogContent>
-      </Dialog>
-    </div>
+      <div className="grid gap-4 p-4 md:grid-cols-[1fr_auto] md:items-center">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-700 dark:text-sky-400"><Car className="size-6" /></div>
+          <div className="min-w-0"><div className="text-xl font-semibold tracking-wide">{ordem.placa}</div><div className="break-words text-sm text-muted-foreground">{ordem.modelo} · {ordem.marca}{ordem.ano ? ` · ${ordem.ano}` : ""}</div></div>
+        </div>
+        <Dialog>
+          <DialogTrigger className={buttonVariants({ className: "h-10 w-full gap-2 md:w-auto" })}><CircleCheck className="size-4" />Concluir abastecimento</DialogTrigger>
+          <DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Concluir abastecimento</DialogTitle><DialogDescription>Informe os dados reais do abastecimento de {ordem.placa}.</DialogDescription></DialogHeader><AbastecimentoCompleteForm abastecimento={ordem} /></DialogContent>
+        </Dialog>
+      </div>
+      <div className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Info label="Motorista" value={ordem.motorista} />
+        <Info label="Combustível autorizado" value={`${ordem.combustivel}${ordem.arla_incluso ? " + ARLA" : ""}`} />
+        <Info label="Emissão" value={`${formatFrotaDate(ordem.data_abastecimento)} · ${ordem.emitido_por ?? "-"}`} />
+      </div>
+    </article>
   );
 }
 
@@ -300,7 +270,7 @@ function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-md bg-muted/35 px-2.5 py-2">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="truncate text-sm font-medium">{value}</div>
+      <div className="break-words text-sm font-medium">{value}</div>
     </div>
   );
 }
@@ -322,6 +292,7 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "America/Sao_Paulo",
   }).format(new Date(value));
 }
 
@@ -335,29 +306,4 @@ function isTodayOrPast(value: string | null) {
   endOfToday.setHours(23, 59, 59, 999);
 
   return date.getTime() <= endOfToday.getTime();
-}
-
-function formatMunicipalityName(name: string) {
-  const cleanName = name.trim().replace(/\s+/g, " ");
-  const lowerName = cleanName.toLowerCase();
-  const prefixes = [
-    "prefeitura municipal de ",
-    "prefeitura municipal da ",
-    "prefeitura municipal do ",
-    "prefeitura municipal das ",
-    "prefeitura municipal dos ",
-    "prefeitura de ",
-    "prefeitura da ",
-    "prefeitura do ",
-    "prefeitura das ",
-    "prefeitura dos ",
-  ];
-  const prefix = prefixes.find((item) => lowerName.startsWith(item));
-
-  if (!prefix) {
-    return cleanName;
-  }
-
-  const city = cleanName.slice(prefix.length).trim();
-  return city ? `Município de ${city}` : cleanName;
 }

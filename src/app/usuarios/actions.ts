@@ -1,4 +1,5 @@
 "use server";
+import { requireRole } from "@/lib/auth-data";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -19,8 +20,9 @@ const allowedRoles = new Set<UsuarioRole>([
 
 export async function createUsuario(
   _previousState: UsuarioActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<UsuarioActionState> {
+  await requireRole(["bdl_admin"]);
   const payload = getUsuarioPayload(formData, "create");
 
   if ("error" in payload) {
@@ -68,8 +70,9 @@ export async function createUsuario(
 
 export async function updateUsuario(
   _previousState: UsuarioActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<UsuarioActionState> {
+  await requireRole(["bdl_admin"]);
   const id = getRequiredValue(formData, "id");
 
   if (!id) {
@@ -119,12 +122,15 @@ export async function updateUsuario(
 }
 
 export async function deleteUsuario(formData: FormData) {
+  await requireRole(["bdl_admin"]);
   const id = getRequiredValue(formData, "id");
   const supabase = createSupabaseServerClient();
   const { error } = await supabase.auth.admin.deleteUser(id);
 
   if (error) {
-    redirect(`/usuarios?error=${encodeURIComponent(formatSupabaseError(error.message))}`);
+    redirect(
+      `/usuarios?error=${encodeURIComponent(formatSupabaseError(error.message))}`,
+    );
   }
 
   revalidateUsersPaths();
@@ -133,89 +139,26 @@ export async function deleteUsuario(formData: FormData) {
 
 export async function updateUsuarioAcessos(
   _previousState: UsuarioActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<UsuarioActionState> {
-  const usuario_id = getRequiredValue(formData, "usuario_id");
-  const prefeitura_id = getRequiredValue(formData, "prefeitura_id");
-  const moduloIds = formData.getAll("modulo_id").filter(isStringValue);
-  const permissaoIds = formData.getAll("permissao_id").filter(isStringValue);
-
-  if (!usuario_id || !prefeitura_id) {
-    return { error: "Usuário municipal não encontrado." };
-  }
-
-  const supabase = createSupabaseServerClient();
-  const { data: perfilData, error: perfilError } = await supabase
-    .from("perfis")
-    .select("role")
-    .eq("id", usuario_id)
-    .single();
-
-  if (perfilError) {
-    return { error: formatSupabaseError(perfilError.message) };
-  }
-
-  const allowedPermissionKeys = getAllowedPermissionKeys(
-    perfilData?.role as UsuarioRole
+  const actor = await requireRole(["bdl_admin"]);
+  const { error } = await createSupabaseServerClient().rpc(
+    "atualizar_usuario_acessos",
+    {
+      p_ator: actor.id,
+      p_usuario: getRequiredValue(formData, "usuario_id"),
+      p_empresa: getRequiredValue(formData, "prefeitura_id"),
+      p_modulos: formData.getAll("modulo_id").filter(isStringValue),
+      p_permissoes: formData.getAll("permissao_id").filter(isStringValue),
+    },
   );
-  const { data: permissoesData, error: permissoesError } = await supabase
-    .from("permissoes")
-    .select("id,modulo_id,chave")
-    .in("id", permissaoIds.length ? permissaoIds : ["00000000-0000-0000-0000-000000000000"]);
-
-  if (permissoesError) {
-    return { error: formatSupabaseError(permissoesError.message) };
-  }
-
-  const allowedModuloIds = new Set(moduloIds);
-  const safePermissaoIds = (permissoesData ?? [])
-    .filter(
-      (permissao) =>
-        allowedModuloIds.has(String(permissao.modulo_id)) &&
-        allowedPermissionKeys.has(String(permissao.chave))
-    )
-    .map((permissao) => String(permissao.id));
-
-  const [deleteModulosResult, deletePermissoesResult] = await Promise.all([
-    supabase.from("usuario_modulos").delete().eq("usuario_id", usuario_id),
-    supabase.from("usuario_permissoes").delete().eq("usuario_id", usuario_id),
-  ]);
-
-  if (deleteModulosResult.error) {
-    return { error: formatSupabaseError(deleteModulosResult.error.message) };
-  }
-
-  if (deletePermissoesResult.error) {
-    return { error: formatSupabaseError(deletePermissoesResult.error.message) };
-  }
-
-  if (moduloIds.length) {
-    const { error } = await supabase.from("usuario_modulos").insert(
-      moduloIds.map((modulo_id) => ({
-        modulo_id,
-        prefeitura_id,
-        usuario_id,
-      }))
-    );
-
-    if (error) {
-      return { error: formatSupabaseError(error.message) };
-    }
-  }
-
-  if (safePermissaoIds.length) {
-    const { error } = await supabase.from("usuario_permissoes").insert(
-      safePermissaoIds.map((permissao_id) => ({
-        permissao_id,
-        usuario_id,
-      }))
-    );
-
-    if (error) {
-      return { error: formatSupabaseError(error.message) };
-    }
-  }
-
+  if (error)
+    return {
+      error:
+        error.code === "P0001"
+          ? error.message
+          : "Não foi possível atualizar os acessos.",
+    };
   revalidateUsersPaths();
   return { success: "Permissões atualizadas com sucesso." };
 }
@@ -241,7 +184,7 @@ function getUsuarioPayload(formData: FormData, mode: "create" | "update") {
   }
 
   if (isMunicipalRole(role) && !prefeitura_id) {
-    return { error: "Selecione a prefeitura do usuário municipal." };
+    return { error: "Selecione a empresa do usuário da empresa." };
   }
 
   if (!cpf) {
@@ -298,43 +241,6 @@ function isStringValue(value: FormDataEntryValue): value is string {
   return typeof value === "string" && Boolean(value.trim());
 }
 
-function getAllowedPermissionKeys(role: UsuarioRole) {
-  if (role === "municipal_admin" || role === "municipal_user") {
-    return new Set([
-      "vehicles.create",
-      "vehicles.update",
-      "vehicles.delete",
-      "vehicles.manage",
-      "vehicles.read",
-      "expirations.manage",
-      "expirations.read",
-      "maintenance.create",
-      "maintenance.update",
-      "maintenance.complete",
-      "maintenance.cancel",
-      "maintenance.read",
-      "fuel.create",
-      "fuel.complete",
-      "fuel.cancel",
-      "fuel.manage",
-      "fuel.read",
-      "fuel_stations.manage",
-      "fuel_stations.read",
-      "drivers.manage",
-      "drivers.read",
-      "departments.manage",
-      "departments.read",
-      "reports.read",
-      "vehicle_usage.read",
-      "vehicle_usage.create",
-      "vehicle_usage.return",
-      "vehicle_usage.cancel",
-    ]);
-  }
-
-  return new Set<string>();
-}
-
 function normalizeCpf(value: string) {
   return value.replace(/\D/g, "");
 }
@@ -350,7 +256,10 @@ function isValidCpf(cpf: string) {
 
   const digits = cpf.split("").map(Number);
   const firstDigit = calculateCpfDigit(digits.slice(0, 9), 10);
-  const secondDigit = calculateCpfDigit([...digits.slice(0, 9), firstDigit], 11);
+  const secondDigit = calculateCpfDigit(
+    [...digits.slice(0, 9), firstDigit],
+    11,
+  );
 
   return firstDigit === digits[9] && secondDigit === digits[10];
 }
@@ -358,7 +267,7 @@ function isValidCpf(cpf: string) {
 function calculateCpfDigit(numbers: number[], factor: number) {
   const total = numbers.reduce(
     (sum, number, index) => sum + number * (factor - index),
-    0
+    0,
   );
   const remainder = (total * 10) % 11;
 
@@ -368,6 +277,9 @@ function calculateCpfDigit(numbers: number[], factor: number) {
 function revalidateUsersPaths() {
   revalidatePath("/");
   revalidatePath("/usuarios");
+  revalidatePath("/empresas", "layout");
+  revalidatePath("/portal");
+  revalidatePath("/gestao", "layout");
 }
 
 function formatSupabaseError(message: string) {
@@ -384,7 +296,7 @@ function formatSupabaseError(message: string) {
     message.includes("invalid input value for enum app_role") ||
     message.includes("municipal_admin")
   ) {
-    return "Atualize os perfis de acesso no Supabase antes de cadastrar Administrador Municipal. Rode a migration do modelo de permissões.";
+    return "Atualize os perfis de acesso no Supabase antes de cadastrar Administrador da empresa. Rode a migration do modelo de permissões.";
   }
 
   if (

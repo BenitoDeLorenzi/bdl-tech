@@ -47,10 +47,22 @@ type PermissionGroup = {
 
 const permissionGroups = [
   {
+    description: "Fechamentos e controle de estoque do estabelecimento.",
+    icon: ClipboardCheck,
+    label: "Vibe Gestão",
+    keys: ["gestao.manage"],
+  },
+  {
     description: "Cadastro, consulta e gestão dos veículos da frota.",
     icon: Car,
     label: "Veículos",
-    keys: ["vehicles.read", "vehicles.create", "vehicles.update", "vehicles.manage", "vehicles.delete"],
+    keys: [
+      "vehicles.read",
+      "vehicles.create",
+      "vehicles.update",
+      "vehicles.manage",
+      "vehicles.delete",
+    ],
   },
   {
     description: "Controle de IPVA, licenciamento, seguro e pagamentos.",
@@ -85,7 +97,13 @@ const permissionGroups = [
     description: "Emissão, consulta, cancelamento e conclusão de ordens.",
     icon: Fuel,
     label: "Abastecimento",
-    keys: ["fuel.read", "fuel.create", "fuel.complete", "fuel.cancel", "fuel.manage"],
+    keys: [
+      "fuel.read",
+      "fuel.create",
+      "fuel.complete",
+      "fuel.cancel",
+      "fuel.manage",
+    ],
   },
   {
     description: "Cadastro e gestão dos postos de combustível credenciados.",
@@ -100,15 +118,15 @@ const permissionGroups = [
     keys: ["drivers.read", "drivers.manage"],
   },
   {
-    description: "Cadastro e padronização das secretarias da prefeitura.",
-    icon: ClipboardCheck,
-    label: "Secretarias",
-    keys: ["departments.read", "departments.manage"],
+    description: "Cadastro e gestão das oficinas da empresa.",
+    icon: BadgeCheck,
+    label: "Oficinas",
+    keys: ["workshops.read", "workshops.manage"],
   },
 ] satisfies PermissionGroup[];
 
 const groupedPermissionKeys = new Set(
-  permissionGroups.flatMap((group) => group.keys)
+  permissionGroups.flatMap((group) => group.keys),
 );
 
 export function UsuarioAcessosForm({
@@ -121,16 +139,16 @@ export function UsuarioAcessosForm({
   const initialModuloIds = useMemo(
     () =>
       acessos.filter((modulo) => modulo.selecionado).map((modulo) => modulo.id),
-    [acessos]
+    [acessos],
   );
   const initialPermissaoIds = useMemo(
     () =>
       acessos.flatMap((modulo) =>
         modulo.permissoes
           .filter((permissao) => permissao.selecionada)
-          .map((permissao) => permissao.id)
+          .map((permissao) => permissao.id),
       ),
-    [acessos]
+    [acessos],
   );
   const [selectedModuloIds, setSelectedModuloIds] = useState(initialModuloIds);
   const [selectedPermissaoIds, setSelectedPermissaoIds] =
@@ -170,18 +188,18 @@ export function UsuarioAcessosForm({
 
     if (permissaoSelected) {
       const moduloPermissaoIds = new Set(
-        modulo.permissoes.map((permissao) => permissao.id)
+        modulo.permissoes.map((permissao) => permissao.id),
       );
 
       setSelectedPermissaoIds((current) => {
         const next = current.filter((id) => id !== permissaoId);
         const hasModulePermission = next.some((id) =>
-          moduloPermissaoIds.has(id)
+          moduloPermissaoIds.has(id),
         );
 
         if (!hasModulePermission) {
           setSelectedModuloIds((currentModules) =>
-            currentModules.filter((id) => id !== modulo.id)
+            currentModules.filter((id) => id !== modulo.id),
           );
         }
 
@@ -191,43 +209,43 @@ export function UsuarioAcessosForm({
     }
 
     setSelectedModuloIds((current) =>
-      Array.from(new Set([...current, modulo.id]))
+      Array.from(new Set([...current, modulo.id])),
     );
     setSelectedPermissaoIds((current) =>
-      Array.from(new Set([...current, permissaoId]))
+      Array.from(new Set([...current, permissaoId])),
     );
   }
 
   function selectAllModulePermissions(modulo: UsuarioModuloAcesso) {
     setSelectedModuloIds((current) =>
-      Array.from(new Set([...current, modulo.id]))
+      Array.from(new Set([...current, modulo.id])),
     );
     setSelectedPermissaoIds((current) =>
       Array.from(
         new Set([
           ...current,
           ...modulo.permissoes.map((permissao) => permissao.id),
-        ])
-      )
+        ]),
+      ),
     );
   }
 
   function clearModulePermissions(modulo: UsuarioModuloAcesso) {
     const moduloPermissaoIds = new Set(
-      modulo.permissoes.map((permissao) => permissao.id)
+      modulo.permissoes.map((permissao) => permissao.id),
     );
 
     setSelectedModuloIds((current) => current.filter((id) => id !== modulo.id));
     setSelectedPermissaoIds((current) =>
-      current.filter((id) => !moduloPermissaoIds.has(id))
+      current.filter((id) => !moduloPermissaoIds.has(id)),
     );
   }
 
   if (!usuario.prefeitura_id) {
     return (
       <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-        Administradores têm acesso global ao painel BDL Tech e não usam
-        permissões municipais por módulo.
+        Usuários Master têm acesso global ao painel Vibe Tech e não usam
+        permissões por empresa.
       </div>
     );
   }
@@ -242,11 +260,11 @@ export function UsuarioAcessosForm({
             </div>
             <div className="min-w-0">
               <div className="text-base font-semibold">
-                Acesso total liberado
+                Acesso de administrador da empresa
               </div>
               <p className="mt-1 text-sm text-emerald-800/80">
-                Administradores Municipais acessam todos os módulos licenciados
-                da prefeitura e todas as ações disponíveis dentro deles.
+                Administradores da empresa acessam todos os módulos com licença
+                vigente da empresa e todas as ações disponíveis dentro deles.
               </p>
             </div>
           </div>
@@ -278,7 +296,7 @@ export function UsuarioAcessosForm({
           </div>
         ) : (
           <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-            Nenhum módulo licenciado foi encontrado para esta prefeitura.
+            Nenhum módulo licenciado foi encontrado para esta empresa.
           </div>
         )}
       </div>
@@ -297,7 +315,7 @@ export function UsuarioAcessosForm({
         <div className="max-h-[65vh] space-y-3 overflow-y-auto pr-1">
           {acessos.map((modulo) => {
             const selectedCount = modulo.permissoes.filter((permissao) =>
-              selectedPermissaoIds.includes(permissao.id)
+              selectedPermissaoIds.includes(permissao.id),
             ).length;
             const moduloSelected =
               selectedModuloIds.includes(modulo.id) || selectedCount > 0;
@@ -308,7 +326,7 @@ export function UsuarioAcessosForm({
                 key={modulo.id}
                 className={cn(
                   "overflow-hidden rounded-lg border transition-colors",
-                  moduloSelected && "border-primary/50 bg-primary/5"
+                  moduloSelected && "border-primary/50 bg-primary/5",
                 )}
               >
                 <div className="flex flex-col gap-3 border-b bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -352,84 +370,87 @@ export function UsuarioAcessosForm({
                 </div>
 
                 <div className="grid gap-3 p-3">
-                  {[...permissionGroups, getOtherPermissionsGroup(modulo)].map((group) => {
-                    const groupPermissions = modulo.permissoes.filter(
-                      (permissao) => group.keys.includes(permissao.chave)
-                    );
+                  {[...permissionGroups, getOtherPermissionsGroup(modulo)].map(
+                    (group) => {
+                      const groupPermissions = modulo.permissoes.filter(
+                        (permissao) => group.keys.includes(permissao.chave),
+                      );
 
-                    if (!groupPermissions.length) {
-                      return null;
-                    }
+                      if (!groupPermissions.length) {
+                        return null;
+                      }
 
-                    const groupSelectedCount = groupPermissions.filter(
-                      (permissao) => selectedPermissaoIds.includes(permissao.id)
-                    ).length;
-                    const GroupIcon = group.icon;
+                      const groupSelectedCount = groupPermissions.filter(
+                        (permissao) =>
+                          selectedPermissaoIds.includes(permissao.id),
+                      ).length;
+                      const GroupIcon = group.icon;
 
-                    return (
-                      <div
-                        key={group.label}
-                        className="rounded-lg border bg-background p-3"
-                      >
-                        <div className="mb-3 flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
-                            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted/50">
-                              <GroupIcon className="size-4 text-muted-foreground" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-medium">{group.label}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {group.description}
+                      return (
+                        <div
+                          key={group.label}
+                          className="rounded-lg border bg-background p-3"
+                        >
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-start gap-3">
+                              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted/50">
+                                <GroupIcon className="size-4 text-muted-foreground" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-medium">{group.label}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {group.description}
+                                </div>
                               </div>
                             </div>
+                            <Badge variant="outline" className="h-6 shrink-0">
+                              {groupSelectedCount}/{groupPermissions.length}
+                            </Badge>
                           </div>
-                          <Badge variant="outline" className="h-6 shrink-0">
-                            {groupSelectedCount}/{groupPermissions.length}
-                          </Badge>
-                        </div>
 
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {groupPermissions.map((permissao) => {
-                            const permissaoSelected =
-                              selectedPermissaoIds.includes(permissao.id);
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {groupPermissions.map((permissao) => {
+                              const permissaoSelected =
+                                selectedPermissaoIds.includes(permissao.id);
 
-                            return (
-                              <button
-                                key={permissao.id}
-                                type="button"
-                                className={cn(
-                                  "flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60",
-                                  permissaoSelected &&
-                                    "border-primary/50 bg-primary/5"
-                                )}
-                                onClick={() =>
-                                  togglePermissao(modulo, permissao.id)
-                                }
-                                disabled={pending}
-                              >
-                                <Checkbox
-                                  checked={permissaoSelected}
-                                  tabIndex={-1}
-                                  aria-hidden="true"
+                              return (
+                                <button
+                                  key={permissao.id}
+                                  type="button"
+                                  className={cn(
+                                    "flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60",
+                                    permissaoSelected &&
+                                      "border-primary/50 bg-primary/5",
+                                  )}
+                                  onClick={() =>
+                                    togglePermissao(modulo, permissao.id)
+                                  }
                                   disabled={pending}
-                                />
-                                <span className="min-w-0">
-                                  <span className="block text-sm font-medium text-foreground">
-                                    {permissao.nome}
-                                  </span>
-                                  {permissao.descricao ? (
-                                    <span className="block line-clamp-2 text-xs text-muted-foreground">
-                                      {permissao.descricao}
+                                >
+                                  <Checkbox
+                                    checked={permissaoSelected}
+                                    tabIndex={-1}
+                                    aria-hidden="true"
+                                    disabled={pending}
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block text-sm font-medium text-foreground">
+                                      {permissao.nome}
                                     </span>
-                                  ) : null}
-                                </span>
-                              </button>
-                            );
-                          })}
+                                    {permissao.descricao ? (
+                                      <span className="block line-clamp-2 text-xs text-muted-foreground">
+                                        {permissao.descricao}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    },
+                  )}
                 </div>
               </div>
             );
@@ -437,7 +458,7 @@ export function UsuarioAcessosForm({
         </div>
       ) : (
         <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-          Nenhum módulo licenciado foi encontrado para esta prefeitura.
+          Nenhum módulo licenciado foi encontrado para esta empresa.
         </div>
       )}
 
@@ -464,7 +485,7 @@ function closeParentDialog(formElement: HTMLFormElement | null) {
 }
 
 function getOtherPermissionsGroup(
-  modulo: UsuarioModuloAcesso
+  modulo: UsuarioModuloAcesso,
 ): PermissionGroup {
   return {
     description: "Permissões específicas deste módulo.",

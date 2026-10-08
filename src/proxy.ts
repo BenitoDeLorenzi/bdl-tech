@@ -13,6 +13,12 @@ export function proxy(request: NextRequest) {
   }
 
   const url = request.nextUrl.clone();
+  if (
+    ["/perfil", "/portal", "/login"].some(
+      (path) => url.pathname === path || url.pathname.startsWith(path + "/"),
+    )
+  )
+    return NextResponse.next();
 
   if (url.pathname === "/" || url.pathname === modulePath) {
     url.pathname = modulePath;

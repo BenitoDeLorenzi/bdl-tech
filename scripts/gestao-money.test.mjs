@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import {currencyValue,currencyDisplay,entryCostTotal} from "../src/lib/gestao-money.ts";
+assert.equal(entryCostTotal("1.5","0.41"),0.62);
+assert.equal(entryCostTotal("2.5","3.25"),8.13);
+assert.equal(entryCostTotal("2","0.00"),0);
+assert.equal(entryCostTotal("2",""),null);
+assert.equal(entryCostTotal("-2","1.00"),null);
+for(const [input,expected] of [["R$ 12.345,67","12345.67"],["1","0.01"],["123456","1234.56"],["R$ 0,00","0.00"],["",""],["-5",null],["100000000000",null]]) assert.equal(currencyValue(input),expected,input);
+assert.equal(currencyDisplay("12345.67").replace(/\s/g," "),"R$ 12.345,67");
+assert.equal(currencyValue(currencyDisplay("7.25")),"7.25");
+assert.equal(currencyValue(currencyDisplay("999999999.99")),"999999999.99");
+assert.equal(currencyDisplay(""),"");
+console.log("PASS: BRL typing, paste, round trip, zero, blank, negative and limit.");

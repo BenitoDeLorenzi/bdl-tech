@@ -1,13 +1,19 @@
+import { ListDeleteButton } from "@/components/list-delete-button";
+import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   Archive,
+  CalendarClock,
+  Car,
   Eye,
   FileText,
+  Fuel,
   Plus,
   Printer,
   Search,
   Trash2,
+  Wrench,
   X,
 } from "lucide-react";
 
@@ -16,7 +22,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -29,7 +34,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { HeaderSeparator } from "@/components/header-separator";
 import {
   Table,
   TableBody,
@@ -48,14 +53,12 @@ import { getAbastecimentosData } from "@/lib/frotas-data";
 import { getFrotasPermissionAccess } from "@/lib/frotas-permissions";
 import {
   formatRelatorioStatus,
-  formatRelatorioTipo,
   getRelatorios,
   reportTypeOptions,
   type FrotaRelatorio,
   type RelatorioStatus,
   type RelatorioTipo,
 } from "@/lib/relatorios-data";
-import { getSecretariaOptions } from "@/lib/secretarias-data";
 import { cn } from "@/lib/utils";
 import { FrotasShell } from "../frotas-shell";
 import { deleteRelatorio } from "./actions";
@@ -77,6 +80,20 @@ const reportTypeStyles: Record<RelatorioTipo, string> = {
   fuel: "border-sky-200 bg-sky-50 text-sky-700",
   maintenance: "border-violet-200 bg-violet-50 text-violet-700",
   vehicles: "border-emerald-200 bg-emerald-50 text-emerald-700",
+};
+
+const reportTypeIcons = {
+  expirations: CalendarClock,
+  fuel: Fuel,
+  maintenance: Wrench,
+  vehicles: Car,
+} satisfies Record<RelatorioTipo, typeof Fuel>;
+
+const reportNames: Record<RelatorioTipo, string> = {
+  expirations: "Débitos",
+  fuel: "Abastecimento",
+  maintenance: "Manutenção",
+  vehicles: "Veículos",
 };
 
 const reportStatusStyles: Record<RelatorioStatus, string> = {
@@ -107,7 +124,6 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
       tipo: params.tipo,
     }),
   ]);
-  const secretarias = await getSecretariaOptions(data.selectedPrefeituraId);
   const buildFilterHref = (values: {
     status?: string | null;
     tipo?: string | null;
@@ -146,7 +162,6 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
           buildFilterHref={buildFilterHref}
           data={data}
           params={params}
-          secretarias={secretarias}
         />
       }
       icon={FileText}
@@ -161,12 +176,12 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <CardTitle>Relatórios criados</CardTitle>
-                <CardDescription>
-                  Documentos oficiais para conferência, impressão e envio aos
-                  setores da prefeitura.
-                </CardDescription>
               </div>
-              <Badge variant="outline">{relatorios.length} registro(s)</Badge>
+              <ListMetrics
+                items={[
+                  { label: "Total", value: relatorios.length },
+                ]}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -176,10 +191,11 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead>Relatório</TableHead>
-                      <TableHead>Tipo</TableHead>
+                      <TableHead>Criado por</TableHead>
+                      <TableHead>Emissão</TableHead>
                       <TableHead>Período</TableHead>
                       <TableHead>Registros</TableHead>
-                      <TableHead>Valor</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="w-[88px] text-right">
                         Ações
@@ -188,7 +204,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
                   </TableHeader>
                   <TableBody>
                     {relatorios.map((relatorio) => (
-                      <RelatorioRow key={relatorio.id} relatorio={relatorio} />
+                      <RelatorioRow key={relatorio.id} relatorio={relatorio} canDelete={profile.role === "bdl_admin"} />
                     ))}
                   </TableBody>
                 </Table>
@@ -197,7 +213,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
               <EmptyReportsState
                 data={data}
                 profile={profile}
-                secretarias={secretarias}
+
                 showPrefeituraField={profile.role === "bdl_admin"}
               />
             )}
@@ -212,7 +228,6 @@ function RelatoriosToolbar({
   buildFilterHref,
   data,
   params,
-  secretarias,
 }: {
   buildFilterHref: (values: {
     status?: string | null;
@@ -220,7 +235,6 @@ function RelatoriosToolbar({
   }) => string;
   data: Awaited<ReturnType<typeof getAbastecimentosData>>;
   params: Awaited<PageProps["searchParams"]>;
-  secretarias: Awaited<ReturnType<typeof getSecretariaOptions>>;
 }) {
   const hasFilters = Boolean(params.q?.trim() || params.tipo || params.status);
 
@@ -284,7 +298,7 @@ function RelatoriosToolbar({
         })}
       </div>
 
-      <Separator orientation="vertical" className="hidden h-5 xl:block" />
+      <HeaderSeparator className="hidden xl:block" />
 
       <Dialog>
         <DialogTrigger
@@ -303,7 +317,7 @@ function RelatoriosToolbar({
             postos={data.postos}
             prefeituras={data.prefeituras}
             selectedPrefeituraId={data.selectedPrefeituraId}
-            secretarias={secretarias}
+
             showPrefeituraField={false}
             veiculos={data.veiculos}
           />
@@ -313,29 +327,21 @@ function RelatoriosToolbar({
   );
 }
 
-function RelatorioRow({ relatorio }: { relatorio: FrotaRelatorio }) {
+function RelatorioRow({ relatorio, canDelete }: { relatorio: FrotaRelatorio; canDelete: boolean }) {
+  const ReportIcon = reportTypeIcons[relatorio.tipo];
   return (
     <TableRow>
       <TableCell>
-        <div className="min-w-[220px]">
-          <div className="font-medium">{relatorio.titulo}</div>
-          <div className="text-xs text-muted-foreground">
-            Criado por {relatorio.criado_por ?? "-"} em{" "}
-            {formatDateTime(relatorio.created_at)}
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge
-          className={cn(reportTypeStyles[relatorio.tipo], "hover:bg-current/0")}
-          variant="outline"
-        >
-          {formatRelatorioTipo(relatorio.tipo)}
+        <Badge variant="outline" className={cn(reportTypeStyles[relatorio.tipo], "h-7 gap-1.5 text-sm font-normal [&>svg]:size-4!")}>
+          <ReportIcon className="size-4 shrink-0" aria-hidden="true" />
+          {reportNames[relatorio.tipo]}
         </Badge>
       </TableCell>
+      <TableCell>{relatorio.criado_por ?? "-"}</TableCell>
+      <TableCell className="tabular-nums">{formatDateTime(relatorio.created_at)}</TableCell>
       <TableCell>{formatReportPeriod(relatorio)}</TableCell>
       <TableCell>{relatorio.total_registros}</TableCell>
-      <TableCell>{formatCurrency(relatorio.valor_total)}</TableCell>
+      <TableCell className="text-right font-medium tabular-nums">{formatCurrency(relatorio.valor_total)}</TableCell>
       <TableCell>
         <Badge
           className={reportStatusStyles[relatorio.status]}
@@ -383,16 +389,13 @@ function RelatorioRow({ relatorio }: { relatorio: FrotaRelatorio }) {
             />
             <TooltipContent>Imprimir relatório</TooltipContent>
           </Tooltip>
-          <Dialog>
+          {canDelete ? <Dialog>
             <Tooltip>
               <TooltipTrigger
                 render={
                   <DialogTrigger
                     aria-label="Remover relatório"
-                    className={buttonVariants({
-                      size: "icon-sm",
-                      variant: "destructive",
-                    })}
+                    render={<ListDeleteButton />}
                   >
                     <Trash2 className="size-4" />
                   </DialogTrigger>
@@ -416,7 +419,7 @@ function RelatorioRow({ relatorio }: { relatorio: FrotaRelatorio }) {
                 </Button>
               </form>
             </DialogContent>
-          </Dialog>
+          </Dialog> : null}
         </div>
       </TableCell>
     </TableRow>
@@ -426,12 +429,10 @@ function RelatorioRow({ relatorio }: { relatorio: FrotaRelatorio }) {
 function EmptyReportsState({
   data,
   profile,
-  secretarias,
   showPrefeituraField,
 }: {
   data: Awaited<ReturnType<typeof getAbastecimentosData>>;
   profile: Awaited<ReturnType<typeof requireUserProfile>>;
-  secretarias: Awaited<ReturnType<typeof getSecretariaOptions>>;
   showPrefeituraField: boolean;
 }) {
   return (
@@ -444,7 +445,7 @@ function EmptyReportsState({
       </h3>
       <p className="mt-1 max-w-md text-sm text-muted-foreground">
         Gere relatórios oficiais para conferência, impressão e envio aos setores
-        responsáveis da prefeitura.
+        responsáveis da empresa.
       </p>
       <Dialog>
         <DialogTrigger
@@ -463,7 +464,7 @@ function EmptyReportsState({
             postos={data.postos}
             prefeituras={data.prefeituras}
             selectedPrefeituraId={data.selectedPrefeituraId}
-            secretarias={secretarias}
+
             showPrefeituraField={showPrefeituraField && profile.role === "bdl_admin"}
             veiculos={data.veiculos}
           />

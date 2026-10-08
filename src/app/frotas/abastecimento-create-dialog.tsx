@@ -23,6 +23,7 @@ import {
 type AbastecimentoCreateDialogProps = {
   className?: string;
   label?: string;
+  motoristas: { id: string; nome: string; cpf: string | null }[];
   postos: FrotaPostoCredenciado[];
   veiculos: FrotaVeiculo[];
 };
@@ -30,6 +31,7 @@ type AbastecimentoCreateDialogProps = {
 export function AbastecimentoCreateDialog({
   className,
   label = "Nova ordem",
+  motoristas,
   postos,
   veiculos,
 }: AbastecimentoCreateDialogProps) {
@@ -61,6 +63,7 @@ export function AbastecimentoCreateDialog({
           </DialogHeader>
           <AbastecimentoForm
             onCreated={handleCreated}
+            motoristas={motoristas}
             postos={postos}
             veiculos={veiculos}
           />

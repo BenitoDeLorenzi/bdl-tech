@@ -1,21 +1,18 @@
+import type { FrotaOficina } from "@/lib/oficinas-data";
+import { listarEmpresasLicenciadas } from "@/lib/module-licensed-empresas";
+import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type VeiculoStatus =
-  | "active"
-  | "maintenance"
-  | "inactive"
-  | "processing"
-  | "consult_error";
+  "active" | "maintenance" | "inactive" | "processing" | "consult_error";
 export type VencimentoStatus = "pending" | "paid" | "expired";
 export type VencimentoTipo = "seguro" | "ipva" | "licenciamento";
 export type PagamentoStatus = "pending" | "partial" | "paid";
 export type AbastecimentoStatus =
-  | "issued"
-  | "completed"
-  | "cancelled"
-  | "expired";
+  "issued" | "completed" | "cancelled" | "expired";
 
 export type FrotaPrefeituraOption = {
+  nome_fantasia?: string | null;
   brasao_url: string | null;
   id: string;
   nome: string;
@@ -34,6 +31,8 @@ export type FrotaPostoCredenciado = {
 };
 
 export type FrotaVeiculo = {
+  consulta_status?: string | null;
+  consulta_mensagem?: string | null;
   abastecimentos: FrotaVeiculoAbastecimento[];
   anexos: FrotaVeiculoAnexo[];
   ano: number;
@@ -75,7 +74,8 @@ export type FrotaVeiculo = {
   renavam: string | null;
   restricao_venda: string | null;
   restricoes: string | null;
-  secretaria: string;
+  /** Valor legado usado somente na reprodução de relatórios históricos. */
+  secretaria: string | null;
   situacao_veicular: string | null;
   status: VeiculoStatus;
   tipo: string;
@@ -114,6 +114,7 @@ export type FrotaVencimento = {
 };
 
 export type FrotaDebitoVeicular = {
+  provider?: string;
   amount: number;
   created_at: string;
   description: string | null;
@@ -206,7 +207,8 @@ export type FrotaAbastecimento = {
   last_printed_at: string | null;
   quilometragem: number | null;
   renavam: string | null;
-  secretaria: string;
+  /** Valor legado usado somente na reprodução de relatórios históricos. */
+  secretaria: string | null;
   status: AbastecimentoStatus;
   valor_litro: number | null;
   valor_total: number | null;
@@ -258,6 +260,8 @@ export type FrotaManutencaoAnexo = FrotaAnexo;
 export type FrotaAbastecimentoAnexo = FrotaAnexo;
 
 export type FrotaManutencao = {
+  cancelled_at: string | null;
+  motivo_cancelamento: string | null;
   anexos: FrotaManutencaoAnexo[];
   created_at: string;
   data_entrada: string;
@@ -268,6 +272,7 @@ export type FrotaManutencao = {
   modelo: string;
   observacoes: string | null;
   oficina: string | null;
+  oficina_id: string | null;
   placa: string;
   prefeitura_id: string;
   quilometragem: number | null;
@@ -296,10 +301,17 @@ export type FrotaVeiculoManutencao = Pick<
 >;
 
 type VeiculoRow = Omit<FrotaVeiculo, "prefeitura_nome"> & {
+  frota_debito_consultas?: Array<{ status: string; error_message: string | null; created_at: string; request_payload: { purpose?: string } | null }>;
   prefeituras: {
     nome: string;
   } | null;
 };
+
+function registrationLookupSummary(consultas: VeiculoRow["frota_debito_consultas"]) {
+  const latest = consultas?.filter((consulta) => consulta.request_payload?.purpose === "registration")
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  return { consulta_status: latest?.status ?? null, consulta_mensagem: latest?.error_message ?? null };
+}
 
 type VencimentoRow = {
   data_vencimento: string;
@@ -329,7 +341,10 @@ type PagamentoRow = {
   vencimento_id: string;
 };
 
-type ManutencaoRow = Omit<FrotaManutencao, "anexos" | "marca" | "modelo" | "placa"> & {
+type ManutencaoRow = Omit<
+  FrotaManutencao,
+  "anexos" | "marca" | "modelo" | "placa"
+> & {
   frota_veiculos: {
     marca: string;
     modelo: string;
@@ -354,7 +369,8 @@ type AbastecimentoRow = Omit<
     modelo: string;
     placa: string;
     renavam: string | null;
-    secretaria: string;
+    /** Valor legado usado somente na reprodução de relatórios históricos. */
+    secretaria: string | null;
     prefeituras: {
       brasao_url: string | null;
       nome: string;
@@ -369,10 +385,7 @@ type AbastecimentoAnexoRow = FrotaAbastecimentoAnexo & {
   abastecimento_id: string;
 };
 
-type VeiculoAbastecimentoRow = Omit<
-  FrotaVeiculoAbastecimento,
-  "posto_nome"
-> & {
+type VeiculoAbastecimentoRow = Omit<FrotaVeiculoAbastecimento, "posto_nome"> & {
   frota_postos_credenciados: {
     nome: string;
   } | null;
@@ -387,37 +400,55 @@ export async function getFrotasData(params?: {
   vencimentoTipo?: string;
 }) {
   const supabase = createSupabaseServerClient();
-  const prefeituraOptionsResult = await supabase
-    .from("prefeituras")
-    .select("id,nome,brasao_url")
-    .eq("status", "active")
-    .order("nome");
-
-  if (prefeituraOptionsResult.error) {
-    throw new Error(prefeituraOptionsResult.error.message);
-  }
-
-  const prefeituras = (prefeituraOptionsResult.data ?? []) as FrotaPrefeituraOption[];
+  const prefeituras = await listarEmpresasLicenciadas(
+    supabase,
+    "frotas-publicas",
+    new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(
+      new Date(),
+    ),
+  );
+  if (
+    params?.prefeituraId &&
+    !prefeituras.some((e) => e.id === params.prefeituraId)
+  )
+    notFound();
   const selectedPrefeituraId = params?.prefeituraId ?? prefeituras[0]?.id;
+  if (!selectedPrefeituraId) return emptyFrotasData(prefeituras);
 
   let veiculosQuery = supabase
     .from("frota_veiculos")
     .select(
-      "id,prefeitura_id,placa,placa_anterior,prefixo,marca,modelo,ano,exercicio,ano_fabricacao,ano_modelo,lugares,lotacao,tipo,cor,combustivel,carroceria,categoria,capacidade,potencia,cilindrada,motor,cmt,eixos,chassi,data_aquisicao,data_documento,municipio_emplacamento,local_registro,situacao_veicular,proprietario_atual,proprietario_documento,proprietario_anterior,restricao_venda,restricoes,licenciado,origem_dados,principal_condutor,especie,versao,secretaria,quilometragem,renavam,status,observacoes,foto_url,foto_path,created_at,prefeituras(nome)"
+      "id,prefeitura_id,placa,placa_anterior,prefixo,marca,modelo,ano,exercicio,ano_fabricacao,ano_modelo,lugares,lotacao,tipo,cor,combustivel,carroceria,categoria,capacidade,potencia,cilindrada,motor,cmt,eixos,chassi,data_aquisicao,data_documento,municipio_emplacamento,local_registro,situacao_veicular,proprietario_atual,proprietario_documento,proprietario_anterior,restricao_venda,restricoes,licenciado,origem_dados,principal_condutor,especie,versao,secretaria,quilometragem,renavam,status,observacoes,foto_url,foto_path,created_at,prefeituras:empresas(nome),frota_debito_consultas(status,error_message,created_at,request_payload)",
     )
     .order("created_at", { ascending: false });
 
   let vencimentosQuery = supabase
     .from("frota_vencimentos")
-    .select("id,veiculo_id,tipo,data_vencimento,status,descricao,valor,origem,external_ref,frota_veiculos(prefeitura_id,placa,prefixo,marca,modelo,ano)")
+    .select(
+      "id,veiculo_id,tipo,data_vencimento,status,descricao,valor,origem,external_ref,frota_veiculos(prefeitura_id,placa,prefixo,marca,modelo,ano)",
+    )
     .order("data_vencimento", { ascending: true });
 
   if (selectedPrefeituraId && !params?.veiculoId) {
-    veiculosQuery = veiculosQuery.eq("prefeitura_id", selectedPrefeituraId);
-    vencimentosQuery = vencimentosQuery.eq("prefeitura_id", selectedPrefeituraId);
+    veiculosQuery = veiculosQuery.eq(
+      "prefeitura_id",
+      selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000",
+    );
+    vencimentosQuery = vencimentosQuery.eq(
+      "prefeitura_id",
+      selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000",
+    );
   }
 
   if (params?.veiculoId) {
+    veiculosQuery = veiculosQuery.in(
+      "prefeitura_id",
+      prefeituras.map((e) => e.id),
+    );
+    vencimentosQuery = vencimentosQuery.in(
+      "prefeitura_id",
+      prefeituras.map((e) => e.id),
+    );
     veiculosQuery = veiculosQuery.eq("id", params.veiculoId);
     vencimentosQuery = vencimentosQuery.eq("veiculo_id", params.veiculoId);
   }
@@ -456,12 +487,12 @@ export async function getFrotasData(params?: {
       const current = vencimentoDatesByVeiculo.get(vencimento.veiculo_id) ?? {};
       current[vencimento.tipo] = vencimento.data_vencimento;
       vencimentoDatesByVeiculo.set(vencimento.veiculo_id, current);
-    }
+    },
   );
 
-  const vencimentoIds = ((vencimentosResult.data ?? []) as unknown as VencimentoRow[]).map(
-    (vencimento) => vencimento.id
-  );
+  const vencimentoIds = (
+    (vencimentosResult.data ?? []) as unknown as VencimentoRow[]
+  ).map((vencimento) => vencimento.id);
   const pagamentosByVencimento = new Map<
     string,
     {
@@ -476,7 +507,9 @@ export async function getFrotasData(params?: {
   if (vencimentoIds.length) {
     const pagamentosResult = await supabase
       .from("frota_vencimento_pagamentos")
-      .select("vencimento_id,data_pagamento,proximo_vencimento,valor_total,status")
+      .select(
+        "vencimento_id,data_pagamento,proximo_vencimento,valor_total,status",
+      )
       .in("vencimento_id", vencimentoIds)
       .order("data_pagamento", { ascending: false });
 
@@ -496,43 +529,48 @@ export async function getFrotasData(params?: {
             ultimo_pagamento_valor:
               current?.ultimo_pagamento_valor ?? pagamento.valor_total,
           });
-        }
+        },
       );
     }
   }
 
-  const veiculoIds = ((veiculosResult.data ?? []) as unknown as VeiculoRow[]).map(
-    (veiculo) => veiculo.id
-  );
-  const abastecimentosByVeiculo = new Map<string, FrotaVeiculoAbastecimento[]>();
+  const veiculoIds = (
+    (veiculosResult.data ?? []) as unknown as VeiculoRow[]
+  ).map((veiculo) => veiculo.id);
+  const abastecimentosByVeiculo = new Map<
+    string,
+    FrotaVeiculoAbastecimento[]
+  >();
   const anexosByVeiculo = new Map<string, FrotaVeiculoAnexo[]>();
   const manutencoesByVeiculo = new Map<string, FrotaVeiculoManutencao[]>();
 
   if (veiculoIds.length) {
     const [anexosResult, manutencoesResult, abastecimentosResult] =
       await Promise.all([
-      supabase
-        .from("frota_veiculo_anexos")
-        .select("id,veiculo_id,file_name,file_path,file_type,file_size,created_at")
-        .in("veiculo_id", veiculoIds)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("frota_manutencoes")
-        .select(
-          "id,veiculo_id,tipo,descricao,oficina,responsavel,data_entrada,data_saida,valor,quilometragem,status,observacoes,created_at"
-        )
-        .in("veiculo_id", veiculoIds)
-        .order("data_entrada", { ascending: false })
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("frota_abastecimentos")
-        .select(
-          "id,veiculo_id,posto_id,numero_ordem,data_abastecimento,motorista,combustivel,quilometragem,litros,valor_litro,valor_total,arla_incluso,arla_litros,arla_valor_litro,arla_valor_total,status,emitido_por,concluido_por,numero_nota_fiscal,completed_at,created_at,expires_at,print_count,frota_postos_credenciados(nome)"
-        )
-        .in("veiculo_id", veiculoIds)
-        .order("data_abastecimento", { ascending: false })
-        .order("created_at", { ascending: false }),
-    ]);
+        supabase
+          .from("frota_veiculo_anexos")
+          .select(
+            "id,veiculo_id,file_name,file_path,file_type,file_size,created_at",
+          )
+          .in("veiculo_id", veiculoIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("frota_manutencoes")
+          .select(
+            "id,veiculo_id,tipo,descricao,oficina,oficina_id,responsavel,data_entrada,data_saida,valor,quilometragem,status,observacoes,created_at",
+          )
+          .in("veiculo_id", veiculoIds)
+          .order("data_entrada", { ascending: false })
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("frota_abastecimentos")
+          .select(
+            "id,veiculo_id,posto_id,numero_ordem,data_abastecimento,motorista,combustivel,quilometragem,litros,valor_litro,valor_total,arla_incluso,arla_litros,arla_valor_litro,arla_valor_total,status,emitido_por,concluido_por,numero_nota_fiscal,completed_at,created_at,expires_at,print_count,frota_postos_credenciados(nome)",
+          )
+          .in("veiculo_id", veiculoIds)
+          .order("data_abastecimento", { ascending: false })
+          .order("created_at", { ascending: false }),
+      ]);
 
     if (!anexosResult.error) {
       const anexos = await withSignedUrls(
@@ -540,7 +578,7 @@ export async function getFrotasData(params?: {
         "frota-veiculo-anexos",
         (anexosResult.data ?? []) as Array<
           FrotaVeiculoAnexo & { veiculo_id: string }
-        >
+        >,
       );
 
       anexos.forEach((anexo) => {
@@ -559,20 +597,22 @@ export async function getFrotasData(params?: {
     }
 
     if (!manutencoesResult.error) {
-      (
-        (manutencoesResult.data ?? []) as FrotaVeiculoManutencao[]
-      ).forEach((manutencao) => {
-        const current = manutencoesByVeiculo.get(manutencao.veiculo_id) ?? [];
-        current.push(manutencao);
-        manutencoesByVeiculo.set(manutencao.veiculo_id, current);
-      });
+      ((manutencoesResult.data ?? []) as FrotaVeiculoManutencao[]).forEach(
+        (manutencao) => {
+          const current = manutencoesByVeiculo.get(manutencao.veiculo_id) ?? [];
+          current.push(manutencao);
+          manutencoesByVeiculo.set(manutencao.veiculo_id, current);
+        },
+      );
     }
 
     if (!abastecimentosResult.error) {
       (
-        (abastecimentosResult.data ?? []) as unknown as VeiculoAbastecimentoRow[]
+        (abastecimentosResult.data ??
+          []) as unknown as VeiculoAbastecimentoRow[]
       ).forEach((abastecimento) => {
-        const current = abastecimentosByVeiculo.get(abastecimento.veiculo_id) ?? [];
+        const current =
+          abastecimentosByVeiculo.get(abastecimento.veiculo_id) ?? [];
         const { frota_postos_credenciados, ...baseAbastecimento } =
           abastecimento;
 
@@ -587,6 +627,7 @@ export async function getFrotasData(params?: {
 
   let veiculos = ((veiculosResult.data ?? []) as unknown as VeiculoRow[]).map(
     (veiculo) => ({
+      ...registrationLookupSummary(veiculo.frota_debito_consultas),
       abastecimentos: abastecimentosByVeiculo.get(veiculo.id) ?? [],
       anexos: anexosByVeiculo.get(veiculo.id) ?? [],
       ano: veiculo.ano,
@@ -640,7 +681,7 @@ export async function getFrotasData(params?: {
       manutencoes: manutencoesByVeiculo.get(veiculo.id) ?? [],
       origem_dados: veiculo.origem_dados,
       vencimentos: vencimentoDatesByVeiculo.get(veiculo.id) ?? {},
-    })
+    }),
   );
 
   if (params?.query) {
@@ -663,15 +704,16 @@ export async function getFrotasData(params?: {
         veiculo.situacao_veicular,
         veiculo.licenciado,
         veiculo.proprietario_atual,
-        veiculo.secretaria,
       ]
         .join(" ")
         .toLowerCase()
-        .includes(normalizedQuery)
+        .includes(normalizedQuery),
     );
   }
 
-  const vencimentos = ((vencimentosResult.data ?? []) as unknown as VencimentoRow[])
+  const vencimentos = (
+    (vencimentosResult.data ?? []) as unknown as VencimentoRow[]
+  )
     .map((vencimento) => ({
       ano: vencimento.frota_veiculos?.ano ?? null,
       data_vencimento: vencimento.data_vencimento,
@@ -706,12 +748,12 @@ export async function getFrotasData(params?: {
     .filter((vencimento) =>
       params?.vencimentoStatus === "paid"
         ? vencimento.total_pagamentos > 0
-        : vencimento.status !== "paid"
+        : vencimento.status !== "paid",
     )
     .filter((vencimento) =>
       params?.vencimentoTipo && params.vencimentoTipo !== "all"
         ? vencimento.tipo === params.vencimentoTipo
-        : true
+        : true,
     )
     .filter((vencimento) => {
       if (!params?.vencimentoStatus || params.vencimentoStatus === "all") {
@@ -736,12 +778,16 @@ export async function getFrotasData(params?: {
   return {
     metricas: {
       ativos: veiculos.filter((veiculo) => veiculo.status === "active").length,
-      emManutencao: veiculos.filter((veiculo) => veiculo.status === "maintenance").length,
+      emManutencao: veiculos.filter(
+        (veiculo) => veiculo.status === "maintenance",
+      ).length,
       total: veiculos.length,
-      vencidos: vencimentos.filter((vencimento) => vencimento.dias_restantes < 0).length,
+      vencidos: vencimentos.filter(
+        (vencimento) => vencimento.dias_restantes < 0,
+      ).length,
       vencendo: vencimentos.filter(
         (vencimento) =>
-          vencimento.dias_restantes >= 0 && vencimento.dias_restantes <= 30
+          vencimento.dias_restantes >= 0 && vencimento.dias_restantes <= 30,
       ).length,
     },
     prefeituras,
@@ -768,7 +814,20 @@ export async function getVeiculoDebitosData(veiculoId: string) {
     throw new Error(consultasResult.error.message);
   }
 
-  const latestConsultaId = consultasResult.data?.[0]?.id;
+  // Preserve debts from the last successful historical import.
+  const latestSuccessful = await supabase
+    .from("frota_debito_consultas")
+    .select("id")
+    .eq("veiculo_id", veiculoId)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestSuccessful.error) {
+    throw new Error(latestSuccessful.error.message);
+  }
+  const latestConsultaId = latestSuccessful.data?.id;
 
   if (!latestConsultaId) {
     return {
@@ -780,7 +839,7 @@ export async function getVeiculoDebitosData(veiculoId: string) {
   const debitosResult = await supabase
     .from("frota_debitos_veiculares")
     .select(
-      "id,type,title,description,amount,due_date,expiration_date,is_expired,required,year,created_at"
+      "id,provider,type,title,description,amount,due_date,expiration_date,is_expired,required,year,created_at",
     )
     .eq("consulta_id", latestConsultaId)
     .order("amount", { ascending: false });
@@ -797,13 +856,18 @@ export async function getVeiculoDebitosData(veiculoId: string) {
 
 export async function getVeiculoConsultaVeicularData(veiculoId: string) {
   const supabase = createSupabaseServerClient();
-  const multasResult = await supabase
+  const latest = await supabase.from("frota_debito_consultas").select("id").eq("veiculo_id", veiculoId)
+    .eq("provider", "plexi").eq("status", "success").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (latest.error) throw new Error(latest.error.message);
+  let finesQuery = supabase
     .from("frota_multas_veiculares")
     .select(
-      "id,origem,numero_auto,situacao,descricao,data_infracao,hora,local_complemento,valor"
+      "id,origem,numero_auto,situacao,descricao,data_infracao,hora,local_complemento,valor",
     )
     .eq("veiculo_id", veiculoId)
     .order("data_infracao", { ascending: false });
+  if (latest.data) finesQuery = finesQuery.or(`origem.eq.manual,consulta_id.eq.${latest.data.id}`);
+  const multasResult = await finesQuery;
 
   if (multasResult.error) {
     if (isMissingFrotasTableError(multasResult.error.message)) {
@@ -813,21 +877,25 @@ export async function getVeiculoConsultaVeicularData(veiculoId: string) {
     throw new Error(multasResult.error.message);
   }
 
-  const recursosResult = await supabase
+  let resourcesQuery = supabase
     .from("frota_recursos_infracao")
     .select("id,processo,numero_auto,detalhamento_infracao,resultado_processo")
     .eq("veiculo_id", veiculoId)
     .order("created_at", { ascending: false });
+  if (latest.data) resourcesQuery = resourcesQuery.eq("consulta_id", latest.data.id);
+  const recursosResult = await resourcesQuery;
 
   if (recursosResult.error) {
     throw new Error(recursosResult.error.message);
   }
 
-  const processosResult = await supabase
+  let processesQuery = supabase
     .from("frota_processos_veiculares")
     .select("id,processo,inicio_em,final_em,interessado,situacao,servicos")
     .eq("veiculo_id", veiculoId)
     .order("created_at", { ascending: false });
+  if (latest.data) processesQuery = processesQuery.eq("consulta_id", latest.data.id);
+  const processosResult = await processesQuery;
 
   if (processosResult.error) {
     throw new Error(processosResult.error.message);
@@ -840,6 +908,27 @@ export async function getVeiculoConsultaVeicularData(veiculoId: string) {
   };
 }
 
+export async function getVeiculoPlexiResumo(veiculoId: string) {
+  const { data, error } = await createSupabaseServerClient().from("frota_debito_consultas")
+    .select("created_at,response_payload").eq("veiculo_id", veiculoId).eq("provider", "plexi")
+    .eq("status", "success").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data?.response_payload) return null;
+  let result = data.response_payload as Record<string, unknown>;
+  for (const key of ["data", "result", "body", "payload"]) {
+    if (result[key] && typeof result[key] === "object" && !Array.isArray(result[key])) result = result[key] as Record<string, unknown>;
+  }
+  const pendingFines = Array.isArray(result.multasPagar) ? result.multasPagar as Array<{ valor?: number }> : [];
+  return {
+    consultadoEm: data.created_at as string,
+    temPdf: typeof result.pdf === "string" && Boolean(result.pdf),
+    totalMultasPagar: pendingFines.reduce((sum, fine) => sum + (Number(fine.valor) || 0), 0),
+    multasPagar: pendingFines.length,
+    historicoMultas: Array.isArray(result.historicoMultas) ? result.historicoMultas.length : 0,
+    dividaAtiva: Array.isArray(result.ipvaDividaAtiva) ? result.ipvaDividaAtiva as Array<Record<string, unknown>> : [],
+  };
+}
+
 export async function getManutencoesData(params?: {
   prefeituraId?: string;
   query?: string;
@@ -849,18 +938,29 @@ export async function getManutencoesData(params?: {
   const frotasData = await getFrotasData({
     prefeituraId: params?.prefeituraId,
   });
-  const selectedPrefeituraId = params?.prefeituraId ?? frotasData.selectedPrefeituraId;
+  const selectedPrefeituraId =
+    params?.prefeituraId ?? frotasData.selectedPrefeituraId;
+
+  const { data: oficinaRows, error: oficinaError } = await supabase.from("frota_oficinas")
+    .select("id,prefeitura_id,nome,documento,telefone,responsavel,endereco,especialidades,observacoes,status")
+    .eq("prefeitura_id", frotasData.selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000")
+    .order("nome");
+  if (oficinaError) throw new Error("Não foi possível carregar as oficinas.");
+  const oficinas = (oficinaRows ?? []) as FrotaOficina[];
 
   let manutencoesQuery = supabase
     .from("frota_manutencoes")
     .select(
-      "id,prefeitura_id,veiculo_id,tipo,descricao,oficina,responsavel,data_entrada,data_saida,valor,quilometragem,status,observacoes,created_at,frota_veiculos(marca,modelo,placa)"
+      "id,prefeitura_id,veiculo_id,tipo,descricao,oficina,oficina_id,responsavel,data_entrada,data_saida,valor,quilometragem,status,observacoes,cancelled_at,motivo_cancelamento,created_at,frota_veiculos(marca,modelo,placa)",
     )
     .order("data_entrada", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (selectedPrefeituraId) {
-    manutencoesQuery = manutencoesQuery.eq("prefeitura_id", selectedPrefeituraId);
+  {
+    manutencoesQuery = manutencoesQuery.eq(
+      "prefeitura_id",
+      selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000",
+    );
   }
 
   if (params?.status && params.status !== "all") {
@@ -873,6 +973,7 @@ export async function getManutencoesData(params?: {
     if (isMissingFrotasTableError(manutencoesResult.error.message)) {
       return {
         ...frotasData,
+    oficinas,
         manutencoes: [],
       };
     }
@@ -880,15 +981,17 @@ export async function getManutencoesData(params?: {
     throw new Error(manutencoesResult.error.message);
   }
 
-  const manutencaoIds = ((manutencoesResult.data ?? []) as unknown as ManutencaoRow[]).map(
-    (manutencao) => manutencao.id
-  );
+  const manutencaoIds = (
+    (manutencoesResult.data ?? []) as unknown as ManutencaoRow[]
+  ).map((manutencao) => manutencao.id);
   const anexosByManutencao = new Map<string, FrotaManutencaoAnexo[]>();
 
   if (manutencaoIds.length) {
     const anexosResult = await supabase
       .from("frota_manutencao_anexos")
-      .select("id,manutencao_id,file_name,file_path,file_type,file_size,created_at")
+      .select(
+        "id,manutencao_id,file_name,file_path,file_type,file_size,created_at",
+      )
       .in("manutencao_id", manutencaoIds)
       .order("created_at", { ascending: false });
 
@@ -898,7 +1001,7 @@ export async function getManutencoesData(params?: {
         "frota-manutencao",
         (anexosResult.data ?? []) as Array<
           FrotaManutencaoAnexo & { manutencao_id: string }
-        >
+        >,
       );
 
       anexos.forEach((anexo) => {
@@ -917,15 +1020,15 @@ export async function getManutencoesData(params?: {
     }
   }
 
-  let manutencoes = ((manutencoesResult.data ?? []) as unknown as ManutencaoRow[]).map(
-    (manutencao) => ({
-      ...manutencao,
-      anexos: anexosByManutencao.get(manutencao.id) ?? [],
-      marca: manutencao.frota_veiculos?.marca ?? "-",
-      modelo: manutencao.frota_veiculos?.modelo ?? "-",
-      placa: manutencao.frota_veiculos?.placa ?? "-",
-    })
-  );
+  let manutencoes = (
+    (manutencoesResult.data ?? []) as unknown as ManutencaoRow[]
+  ).map((manutencao) => ({
+    ...manutencao,
+    anexos: anexosByManutencao.get(manutencao.id) ?? [],
+    marca: manutencao.frota_veiculos?.marca ?? "-",
+    modelo: manutencao.frota_veiculos?.modelo ?? "-",
+    placa: manutencao.frota_veiculos?.placa ?? "-",
+  }));
 
   if (params?.query) {
     const normalizedQuery = params.query.toLowerCase();
@@ -941,12 +1044,13 @@ export async function getManutencoesData(params?: {
       ]
         .join(" ")
         .toLowerCase()
-        .includes(normalizedQuery)
+        .includes(normalizedQuery),
     );
   }
 
   return {
     ...frotasData,
+    oficinas,
     manutencoes,
   };
 }
@@ -961,7 +1065,17 @@ export async function getAbastecimentosData(params?: {
   const frotasData = await getFrotasData({
     prefeituraId: params?.prefeituraId,
   });
-  const selectedPrefeituraId = params?.prefeituraId ?? frotasData.selectedPrefeituraId;
+  const selectedPrefeituraId =
+    params?.prefeituraId ?? frotasData.selectedPrefeituraId;
+
+  const { data: motoristaRows, error: motoristaError } = await supabase
+    .from("frota_motoristas")
+    .select("id,nome,cpf")
+    .eq("prefeitura_id", selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000")
+    .eq("status", "active")
+    .order("nome");
+  if (motoristaError) throw new Error(motoristaError.message);
+  const motoristas = (motoristaRows ?? []) as { id: string; nome: string; cpf: string | null }[];
 
   let postosQuery = supabase
     .from("frota_postos_credenciados")
@@ -972,16 +1086,19 @@ export async function getAbastecimentosData(params?: {
   let abastecimentosQuery = supabase
     .from("frota_abastecimentos")
     .select(
-      "id,prefeitura_id,veiculo_id,posto_id,numero_ordem,data_abastecimento,motorista,fornecedor,combustivel,quilometragem,litros,valor_litro,valor_total,arla_incluso,arla_litros,arla_valor_litro,arla_valor_total,status,observacoes,emitido_por,expires_at,concluido_por,numero_nota_fiscal,completed_at,created_at,print_count,last_printed_at,motivo_cancelamento,cancelled_at,frota_veiculos(placa,marca,modelo,ano,renavam,secretaria,prefeituras(nome,brasao_url)),frota_postos_credenciados(nome)"
+      "id,prefeitura_id,veiculo_id,posto_id,numero_ordem,data_abastecimento,motorista,fornecedor,combustivel,quilometragem,litros,valor_litro,valor_total,arla_incluso,arla_litros,arla_valor_litro,arla_valor_total,status,observacoes,emitido_por,expires_at,concluido_por,numero_nota_fiscal,completed_at,created_at,print_count,last_printed_at,motivo_cancelamento,cancelled_at,frota_veiculos(placa,marca,modelo,ano,renavam,secretaria,prefeituras:empresas(nome,brasao_url)),frota_postos_credenciados(nome)",
     )
     .order("data_abastecimento", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (selectedPrefeituraId) {
-    postosQuery = postosQuery.eq("prefeitura_id", selectedPrefeituraId);
+  {
+    postosQuery = postosQuery.eq(
+      "prefeitura_id",
+      selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000",
+    );
     abastecimentosQuery = abastecimentosQuery.eq(
       "prefeitura_id",
-      selectedPrefeituraId
+      selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000",
     );
   }
 
@@ -1002,6 +1119,7 @@ export async function getAbastecimentosData(params?: {
     if (isMissingFrotasTableError(postosResult.error.message)) {
       return {
         ...frotasData,
+        motoristas,
         abastecimentos: [],
         postos: [],
       };
@@ -1014,6 +1132,7 @@ export async function getAbastecimentosData(params?: {
     if (isMissingFrotasTableError(abastecimentosResult.error.message)) {
       return {
         ...frotasData,
+        motoristas,
         abastecimentos: [],
         postos: (postosResult.data ?? []) as FrotaPostoCredenciado[],
       };
@@ -1022,16 +1141,19 @@ export async function getAbastecimentosData(params?: {
     throw new Error(abastecimentosResult.error.message);
   }
 
-  const rawAbastecimentos = (
-    (abastecimentosResult.data ?? []) as unknown as AbastecimentoRow[]
+  const rawAbastecimentos = (abastecimentosResult.data ??
+    []) as unknown as AbastecimentoRow[];
+  const abastecimentoIds = rawAbastecimentos.map(
+    (abastecimento) => abastecimento.id,
   );
-  const abastecimentoIds = rawAbastecimentos.map((abastecimento) => abastecimento.id);
   const anexosByAbastecimento = new Map<string, FrotaAbastecimentoAnexo[]>();
 
   if (abastecimentoIds.length) {
     const anexosResult = await supabase
       .from("frota_abastecimento_anexos")
-      .select("id,abastecimento_id,file_name,file_path,file_type,file_size,created_at")
+      .select(
+        "id,abastecimento_id,file_name,file_path,file_type,file_size,created_at",
+      )
       .in("abastecimento_id", abastecimentoIds)
       .order("created_at", { ascending: false });
 
@@ -1039,7 +1161,7 @@ export async function getAbastecimentosData(params?: {
       const anexos = await withSignedUrls(
         supabase,
         "frota-abastecimento",
-        (anexosResult.data ?? []) as AbastecimentoAnexoRow[]
+        (anexosResult.data ?? []) as AbastecimentoAnexoRow[],
       );
 
       anexos.forEach((anexo) => {
@@ -1080,7 +1202,7 @@ export async function getAbastecimentosData(params?: {
         renavam: frota_veiculos?.renavam ?? null,
         secretaria: frota_veiculos?.secretaria ?? "-",
       };
-    }
+    },
   );
 
   abastecimentos = withFuelConsumption(abastecimentos);
@@ -1095,16 +1217,16 @@ export async function getAbastecimentosData(params?: {
         abastecimento.modelo,
         abastecimento.motorista,
         abastecimento.fornecedor,
-        abastecimento.secretaria,
       ]
         .join(" ")
         .toLowerCase()
-        .includes(normalizedQuery)
+        .includes(normalizedQuery),
     );
   }
 
   return {
     ...frotasData,
+        motoristas,
     abastecimentos,
     postos: (postosResult.data ?? []) as FrotaPostoCredenciado[],
   };
@@ -1118,15 +1240,21 @@ export async function getPostosCredenciadosData(params?: {
   const frotasData = await getFrotasData({
     prefeituraId: params?.prefeituraId,
   });
-  const selectedPrefeituraId = params?.prefeituraId ?? frotasData.selectedPrefeituraId;
+  const selectedPrefeituraId =
+    params?.prefeituraId ?? frotasData.selectedPrefeituraId;
 
   let postosQuery = supabase
     .from("frota_postos_credenciados")
-    .select("id,prefeitura_id,nome,cnpj,endereco,telefone,status,created_at,prefeituras(nome)")
+    .select(
+      "id,prefeitura_id,nome,cnpj,endereco,telefone,status,created_at,prefeituras:empresas(nome)",
+    )
     .order("created_at", { ascending: false });
 
-  if (selectedPrefeituraId) {
-    postosQuery = postosQuery.eq("prefeitura_id", selectedPrefeituraId);
+  {
+    postosQuery = postosQuery.eq(
+      "prefeitura_id",
+      selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000",
+    );
   }
 
   const { data, error } = await postosQuery;
@@ -1142,9 +1270,11 @@ export async function getPostosCredenciadosData(params?: {
     throw new Error(error.message);
   }
 
-  let postos = ((data ?? []) as unknown as Array<
-    FrotaPostoCredenciado & { prefeituras: { nome: string } | null }
-  >).map(({ prefeituras, ...posto }) => ({
+  let postos = (
+    (data ?? []) as unknown as Array<
+      FrotaPostoCredenciado & { prefeituras: { nome: string } | null }
+    >
+  ).map(({ prefeituras, ...posto }) => ({
     ...posto,
     prefeitura_nome: prefeituras?.nome ?? "-",
   }));
@@ -1152,10 +1282,16 @@ export async function getPostosCredenciadosData(params?: {
   if (params?.query) {
     const normalizedQuery = params.query.toLowerCase();
     postos = postos.filter((posto) =>
-      [posto.nome, posto.cnpj, posto.telefone, posto.endereco, posto.prefeitura_nome]
+      [
+        posto.nome,
+        posto.cnpj,
+        posto.telefone,
+        posto.endereco,
+        posto.prefeitura_nome,
+      ]
         .join(" ")
         .toLowerCase()
-        .includes(normalizedQuery)
+        .includes(normalizedQuery),
     );
   }
 
@@ -1208,7 +1344,7 @@ function withFuelConsumption(abastecimentos: FrotaAbastecimento[]) {
 
         consumptionByOrder.set(
           order.id,
-          Math.round((distance / order.litros) * 100) / 100
+          Math.round((distance / order.litros) * 100) / 100,
         );
       });
   });
@@ -1224,8 +1360,8 @@ export function formatVeiculoStatus(status: VeiculoStatus) {
     active: "Ativo",
     inactive: "Inativo",
     maintenance: "Em manutenção",
-    consult_error: "Falha na consulta",
-    processing: "Processando",
+    consult_error: "Aguardando conferência",
+    processing: "Consultando",
   };
 
   return labels[status];
@@ -1282,7 +1418,7 @@ export function formatFrotaDaysRemaining(days: number) {
 
 function emptyFrotasData(
   prefeituras: FrotaPrefeituraOption[],
-  selectedPrefeituraId?: string
+  selectedPrefeituraId?: string,
 ) {
   return {
     metricas: {
@@ -1304,7 +1440,7 @@ function getDaysUntil(value: string) {
   const todayUtc = Date.UTC(
     today.getFullYear(),
     today.getMonth(),
-    today.getDate()
+    today.getDate(),
   );
   const [year, month, day] = value.split("-").map(Number);
   const targetUtc = Date.UTC(year, month - 1, day);
@@ -1333,7 +1469,7 @@ function isMissingFrotasTableError(message: string) {
 async function withSignedUrls<T extends FrotaAnexo>(
   supabase: ReturnType<typeof createSupabaseServerClient>,
   bucket: string,
-  anexos: T[]
+  anexos: T[],
 ) {
   return Promise.all(
     anexos.map(async (anexo) => {
@@ -1345,6 +1481,6 @@ async function withSignedUrls<T extends FrotaAnexo>(
         ...anexo,
         signed_url: data?.signedUrl ?? null,
       };
-    })
+    }),
   );
 }

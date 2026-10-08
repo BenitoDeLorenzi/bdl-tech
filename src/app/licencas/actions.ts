@@ -1,4 +1,5 @@
 "use server";
+import { requireRole } from "@/lib/auth-data";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -29,6 +30,7 @@ export async function createLicenca(
   _previousState: LicencaActionState,
   formData: FormData
 ): Promise<LicencaActionState> {
+  await requireRole(["bdl_admin"]);
   const payload = getLicencaPayload(formData);
 
   if ("error" in payload) {
@@ -54,7 +56,7 @@ export async function createLicenca(
 
   revalidatePath("/");
   revalidatePath("/licencas");
-  revalidatePath(`/prefeituras/${payload.prefeitura_id}`);
+  revalidatePath(`/empresas/${payload.prefeitura_id}`);
   return { success: "Licença cadastrada com sucesso." };
 }
 
@@ -62,6 +64,7 @@ export async function updateLicenca(
   _previousState: LicencaActionState,
   formData: FormData
 ): Promise<LicencaActionState> {
+  await requireRole(["bdl_admin"]);
   const id = getRequiredValue(formData, "id");
 
   if (!id) {
@@ -94,11 +97,12 @@ export async function updateLicenca(
 
   revalidatePath("/");
   revalidatePath("/licencas");
-  revalidatePath(`/prefeituras/${payload.prefeitura_id}`);
+  revalidatePath(`/empresas/${payload.prefeitura_id}`);
   return { success: "Licença atualizada com sucesso." };
 }
 
 export async function deleteLicenca(formData: FormData) {
+  await requireRole(["bdl_admin"]);
   const id = getRequiredValue(formData, "id");
 
   const supabase = createSupabaseServerClient();
@@ -117,6 +121,7 @@ export async function registerLicencaPagamento(
   _previousState: LicencaActionState,
   formData: FormData
 ): Promise<LicencaActionState> {
+  await requireRole(["bdl_admin"]);
   const id = getRequiredValue(formData, "id");
   const pago_em = getRequiredValue(formData, "pago_em");
   const valor_pago = getOptionalNumber(formData, "valor_pago");
@@ -166,6 +171,7 @@ export async function updateLicencaPagamento(
   _previousState: LicencaActionState,
   formData: FormData
 ): Promise<LicencaActionState> {
+  await requireRole(["bdl_admin"]);
   const id = getRequiredValue(formData, "id");
   const vencimento = getRequiredValue(formData, "vencimento");
   const valor = getOptionalNumber(formData, "valor");
@@ -216,6 +222,7 @@ export async function renewLicenca(
   _previousState: LicencaActionState,
   formData: FormData
 ): Promise<LicencaActionState> {
+  await requireRole(["bdl_admin"]);
   const id = getRequiredValue(formData, "id");
   const inicio = getRequiredValue(formData, "inicio");
   const fim = getRequiredValue(formData, "fim");
@@ -315,6 +322,7 @@ export async function renewLicenca(
 }
 
 export async function reopenLicencaPagamento(formData: FormData) {
+  await requireRole(["bdl_admin"]);
   const result = await updateLicencaPagamentoStatus(formData, "open", {
     documento: null,
     forma_pagamento: null,
@@ -333,6 +341,7 @@ export async function reopenLicencaPagamento(formData: FormData) {
 }
 
 export async function cancelLicencaPagamento(formData: FormData) {
+  await requireRole(["bdl_admin"]);
   const result = await updateLicencaPagamentoStatus(formData, "cancelled");
 
   if ("error" in result) {
@@ -392,8 +401,8 @@ async function updateLicencaPagamentoStatus(
 function revalidateLicencaPagamentoPaths(prefeituraId: string) {
   revalidatePath("/");
   revalidatePath("/licencas");
-  revalidatePath("/prefeituras");
-  revalidatePath(`/prefeituras/${prefeituraId}`);
+  revalidatePath("/empresas");
+  revalidatePath(`/empresas/${prefeituraId}`);
 }
 
 async function insertLicencaRenovacaoSnapshot(
@@ -584,7 +593,7 @@ function formatSupabaseError(message: string) {
     message.includes("licencas_prefeitura_id_modulo_id_key") ||
     message.includes("unique")
   ) {
-    return "Esta prefeitura já possui uma licença para este módulo.";
+    return "Esta empresa já possui uma licença para este módulo.";
   }
 
   return message;

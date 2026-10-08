@@ -61,7 +61,7 @@ export async function loginAction(
 
   if (perfilLogin.ativo === false) {
     await authClient.auth.signOut();
-    return { error: "Este usuário está inativo. Fale com a BDL Tech." };
+    return { error: "Este usuário está inativo. Fale com a Vibe Tech." };
   }
 
   redirect("/portal");

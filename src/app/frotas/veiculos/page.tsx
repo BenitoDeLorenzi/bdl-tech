@@ -1,17 +1,13 @@
+import { ListDeleteButton } from "@/components/list-delete-button";
+import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
 import {
-  CalendarClock,
   Car,
   CircleCheck,
   CircleX,
-  Eye,
-  Fuel,
-  Gauge,
-  Hash,
-  Loader2,
+  ClipboardCheck,
+  LoaderCircle,
   Pencil,
-  Plus,
-  RefreshCw,
   Search,
   Settings,
   Trash2,
@@ -19,13 +15,12 @@ import {
   X,
 } from "lucide-react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { VeiculoAvatar } from "@/components/veiculo-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -38,7 +33,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { HeaderSeparator } from "@/components/header-separator";
 import {
   Table,
   TableBody,
@@ -53,25 +48,20 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  formatFrotaDate,
   formatVeiculoStatus,
-  formatVencimentoTipo,
   getFrotasData,
-  type FrotaVeiculo,
   type VeiculoStatus,
-  type VencimentoTipo,
 } from "@/lib/frotas-data";
 import { requireUserProfile } from "@/lib/auth-data";
 import { getFrotasPermissionAccess } from "@/lib/frotas-permissions";
-import { getSecretariaOptions } from "@/lib/secretarias-data";
 import { CopyValueButton } from "../copy-value-button";
 import { DeleteVeiculoForm } from "../delete-veiculo-form";
 import { FrotasShell } from "../frotas-shell";
 import { FrotasToasts } from "../frotas-toasts";
-import { VeiculoFotoAvatarControl } from "../veiculo-foto-avatar-control";
+import { VeiculoCadastroDialog } from "../veiculo-cadastro-dialog";
 import { VeiculoForm } from "../veiculo-form";
-import { syncVeiculoConsultaAutomatica } from "../actions";
 import { VehicleRealtimeSync } from "./vehicle-realtime-sync";
+import { VehicleLookupSync } from "./vehicle-lookup-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -89,8 +79,8 @@ const statusFilters = [
   { label: "Todos", status: undefined },
   { label: "Ativos", status: "active" },
   { label: "Manutenção", status: "maintenance" },
-  { label: "Processando", status: "processing" },
-  { label: "Falha", status: "consult_error" },
+  { label: "Consultando", status: "processing" },
+  { label: "Conferência pendente", status: "consult_error" },
   { label: "Inativos", status: "inactive" },
 ];
 
@@ -108,7 +98,6 @@ export default async function FrotasPage({ searchParams }: PageProps) {
     query: params.q,
     status: params.status,
   });
-  const secretarias = await getSecretariaOptions(data.selectedPrefeituraId);
   const searchTerm = params.q?.trim();
   const buildFilterHref = (values: {
     prefeitura?: string | null;
@@ -147,7 +136,6 @@ export default async function FrotasPage({ searchParams }: PageProps) {
           buildFilterHref={buildFilterHref}
           data={data}
           params={params}
-          secretarias={secretarias}
           showPrefeituraField={profile.role === "bdl_admin"}
         />
       }
@@ -158,6 +146,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
       title="Veículos"
     >
       <VehicleRealtimeSync prefeituraId={data.selectedPrefeituraId} />
+      <VehicleLookupSync prefeituraId={data.selectedPrefeituraId} vehicleIds={data.veiculos.filter((vehicle) => vehicle.status === "processing").map((vehicle) => vehicle.id)} />
       <FrotasToasts deleted={params.deleted} error={params.error} />
         <main className="flex flex-1 flex-col gap-3 p-4">
             <Card>
@@ -169,12 +158,14 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                     </div>
                     <div>
                       <CardTitle>Veículos cadastrados</CardTitle>
-                      <CardDescription>
-                        Lista operacional da frota municipal.
-                      </CardDescription>
                     </div>
                   </div>
-                  <Badge variant="outline">{data.veiculos.length} registro(s)</Badge>
+                  <ListMetrics
+                    items={[
+                      { label: "Ativos", value: data.metricas.ativos, tone: "success" },
+                      { label: "Total", value: data.metricas.total },
+                    ]}
+                  />
                 </div>
               </CardHeader>
               <CardContent>
@@ -185,9 +176,9 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                         <TableRow className="bg-muted/50">
                           <TableHead className="w-[72px]">Foto</TableHead>
                           <TableHead>Veículo</TableHead>
-                          <TableHead>Secretaria</TableHead>
                           <TableHead>Placa / Renavam</TableHead>
                           <TableHead>Combustível</TableHead>
+                          <TableHead className="text-right">Quilometragem</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="w-[92px] text-right">
                             Ações
@@ -198,32 +189,16 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                         {data.veiculos.map((veiculo) => (
                           <TableRow key={veiculo.id}>
                             <TableCell>
-                              <Avatar className="size-12 rounded-lg">
-                                {veiculo.foto_url ? (
-                                  <AvatarImage
-                                    src={veiculo.foto_url}
-                                    alt={`Foto do veículo ${veiculo.placa}`}
-                                    className="rounded-lg"
-                                  />
-                                ) : null}
-                                <AvatarFallback className="rounded-lg">
-                                  <Car className="size-5" />
-                                </AvatarFallback>
-                              </Avatar>
+                              <VeiculoAvatar fotoUrl={veiculo.foto_url} placa={veiculo.placa} className="size-12" />
                             </TableCell>
                             <TableCell>
                               <div className="min-w-[190px]">
                                 <div className="truncate font-medium">
-                                  {veiculo.modelo}
+                                  {veiculo.modelo || "Dados cadastrais pendentes"}
                                 </div>
                                 <div className="truncate text-sm text-muted-foreground">
-                                  {veiculo.marca} · {veiculo.ano_modelo ?? veiculo.ano}
+                                  {veiculo.marca ? `${veiculo.marca} · ` : ""}{veiculo.ano_modelo || veiculo.ano || "Ano não informado"}
                                 </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="max-w-[180px] truncate">
-                                {veiculo.secretaria || "-"}
                               </div>
                             </TableCell>
                             <TableCell>
@@ -253,41 +228,28 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                                 {veiculo.combustivel ?? "-"}
                               </Badge>
                             </TableCell>
+                            <TableCell className="text-right whitespace-nowrap tabular-nums">
+                              {veiculo.quilometragem != null ? (
+                                <>
+                                  {veiculo.quilometragem.toLocaleString("pt-BR")}
+                                  <span className="ml-1 text-xs text-muted-foreground">km</span>
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground">Não informada</span>
+                              )}
+                            </TableCell>
                             <TableCell>
-                              <VehicleStatusBadge status={veiculo.status} />
+                              <div className="space-y-1.5">
+                                <VehicleStatusBadge status={veiculo.status} lookupStatus={veiculo.consulta_status} />
+                                {veiculo.status === "processing" || veiculo.status === "consult_error" ? (
+                                  <p className="max-w-[260px] text-xs text-muted-foreground" title={veiculo.consulta_mensagem ?? undefined}>
+                                    {veiculo.consulta_mensagem ?? (veiculo.consulta_status === "success" ? "Dados recebidos. Confira e finalize o cadastro." : "Aguardando retorno da Plexi.")}
+                                  </p>
+                                ) : null}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <div className="flex justify-end gap-1">
-                                <Dialog>
-                                  <Tooltip>
-                                    <TooltipTrigger
-                                      render={
-                                        <DialogTrigger
-                                          className={buttonVariants({
-                                            variant: "ghost",
-                                            size: "icon-sm",
-                                          })}
-                                          aria-label="Ver detalhes"
-                                        >
-                                          <Eye className="size-4" />
-                                        </DialogTrigger>
-                                      }
-                                    />
-                                    <TooltipContent>Ver detalhes</TooltipContent>
-                                  </Tooltip>
-                                  <DialogContent className="sm:max-w-3xl">
-                                    <DialogHeader>
-                                      <DialogTitle>Detalhes do veículo</DialogTitle>
-                                      <DialogDescription>
-                                        Informações completas de {veiculo.placa}.
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    <VeiculoDetails
-                                      canUpdate={access.canUpdateVeiculos}
-                                      veiculo={veiculo}
-                                    />
-                                  </DialogContent>
-                                </Dialog>
 
                                 <Tooltip>
                                   <TooltipTrigger
@@ -307,33 +269,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                                   <TooltipContent>Gestão do veículo</TooltipContent>
                                 </Tooltip>
 
-                                {["processing", "consult_error"].includes(veiculo.status) ? (
-                                  <Tooltip>
-                                    <TooltipTrigger
-                                      render={
-                                        <form action={syncVeiculoConsultaAutomatica}>
-                                          <input
-                                            type="hidden"
-                                            name="id"
-                                            value={veiculo.id}
-                                          />
-                                          <Button
-                                            type="submit"
-                                            variant="ghost"
-                                            size="icon-sm"
-                                            aria-label="Sincronizar consulta"
-                                          >
-                                            <RefreshCw className="size-4" />
-                                          </Button>
-                                        </form>
-                                      }
-                                    />
-                                    <TooltipContent>Sincronizar consulta</TooltipContent>
-                                  </Tooltip>
-                                ) : null}
-
-                                {access.canUpdateVeiculos &&
-                                veiculo.status !== "processing" ? (
+                                {access.canUpdateVeiculos ? (
                                   <Dialog>
                                     <Tooltip>
                                       <TooltipTrigger
@@ -343,21 +279,21 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                                               variant: "ghost",
                                               size: "icon-sm",
                                             })}
-                                            aria-label="Editar veículo"
+                                            aria-label={veiculo.status === "consult_error" ? "Conferir cadastro" : "Editar veículo"}
+                                            disabled={veiculo.status === "processing"}
                                           >
                                             <Pencil className="size-4" />
                                           </DialogTrigger>
                                         }
                                       />
-                                      <TooltipContent>Editar veículo</TooltipContent>
+                                      <TooltipContent>{veiculo.status === "processing" ? "Aguarde o resultado da consulta" : veiculo.status === "consult_error" ? "Conferir e finalizar cadastro" : "Editar veículo"}</TooltipContent>
                                     </Tooltip>
                                     <DialogContent className="sm:max-w-5xl">
                                       <DialogHeader>
-                                        <DialogTitle>Editar veículo</DialogTitle>
+                                        <DialogTitle>{veiculo.status === "consult_error" ? "Conferir cadastro do veículo" : "Editar veículo"}</DialogTitle>
                                       </DialogHeader>
                                       <VeiculoForm
                                         prefeituras={data.prefeituras}
-                                        secretarias={secretarias}
                                         selectedPrefeituraId={
                                           data.selectedPrefeituraId
                                         }
@@ -370,17 +306,13 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                                   </Dialog>
                                 ) : null}
 
-                                {access.canDeleteVeiculos &&
-                                veiculo.status !== "processing" ? (
+                                {access.canDeleteVeiculos ? (
                                   <Dialog>
                                     <Tooltip>
                                       <TooltipTrigger
                                         render={
                                           <DialogTrigger
-                                            className={buttonVariants({
-                                              variant: "destructive",
-                                              size: "icon-sm",
-                                            })}
+                                            render={<ListDeleteButton />}
                                             aria-label="Excluir veículo"
                                           >
                                             <Trash2 className="size-4" />
@@ -412,7 +344,6 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                   <EmptyFleetState
                     canCreate={access.canCreateVeiculos}
                     prefeituras={data.prefeituras}
-                    secretarias={secretarias}
                     showPrefeituraField={profile.role === "bdl_admin"}
                     selectedPrefeituraId={data.selectedPrefeituraId}
                   />
@@ -429,7 +360,6 @@ function VeiculosToolbar({
   buildFilterHref,
   data,
   params,
-  secretarias,
   showPrefeituraField,
 }: {
   access: Awaited<ReturnType<typeof getFrotasPermissionAccess>>;
@@ -439,7 +369,6 @@ function VeiculosToolbar({
   }) => string;
   data: Awaited<ReturnType<typeof getFrotasData>>;
   params: Awaited<PageProps["searchParams"]>;
-  secretarias: Awaited<ReturnType<typeof getSecretariaOptions>>;
   showPrefeituraField: boolean;
 }) {
   const hasActiveFilters = Boolean(params.q?.trim() || params.status || params.prefeitura);
@@ -509,39 +438,16 @@ function VeiculosToolbar({
         })}
       </div>
 
-      <Separator orientation="vertical" className="hidden h-5 xl:block" />
+      {access.canCreateVeiculos ? <HeaderSeparator className="hidden xl:block" /> : null}
 
-      <div className="hidden shrink-0 items-center gap-1.5 md:flex">
-        <Badge variant="outline" className="h-7">
-          {data.metricas.total} total
-        </Badge>
-        <Badge variant="secondary" className="h-7">
-          {data.metricas.ativos} ativos
-        </Badge>
-      </div>
+
 
       {access.canCreateVeiculos ? (
-        <Dialog>
-          <DialogTrigger
-            className={buttonVariants({
-              className: "h-9 shrink-0 gap-2",
-            })}
-          >
-            <Plus className="size-4" />
-            Novo veículo
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-5xl">
-            <DialogHeader>
-              <DialogTitle>Novo veículo</DialogTitle>
-            </DialogHeader>
-            <VeiculoForm
-              prefeituras={data.prefeituras}
-              secretarias={secretarias}
-              selectedPrefeituraId={data.selectedPrefeituraId}
-              showPrefeituraField={showPrefeituraField}
-            />
-          </DialogContent>
-        </Dialog>
+        <VeiculoCadastroDialog
+          prefeituras={data.prefeituras}
+          selectedPrefeituraId={data.selectedPrefeituraId}
+          showPrefeituraField={showPrefeituraField}
+        />
       ) : null}
     </div>
   );
@@ -550,13 +456,11 @@ function VeiculosToolbar({
 function EmptyFleetState({
   canCreate,
   prefeituras,
-  secretarias,
   showPrefeituraField,
   selectedPrefeituraId,
 }: {
   canCreate: boolean;
   prefeituras: Awaited<ReturnType<typeof getFrotasData>>["prefeituras"];
-  secretarias: Awaited<ReturnType<typeof getSecretariaOptions>>;
   showPrefeituraField: boolean;
   selectedPrefeituraId?: string;
 }) {
@@ -569,296 +473,22 @@ function EmptyFleetState({
         Nenhum veículo encontrado
       </h3>
       <p className="mt-1 max-w-md text-sm text-muted-foreground">
-        Cadastre o primeiro veículo da prefeitura selecionada ou ajuste os
+        Cadastre o primeiro veículo da empresa selecionada ou ajuste os
         filtros para visualizar outros registros.
       </p>
       {canCreate ? (
-        <Dialog>
-          <DialogTrigger
-            className={buttonVariants({
-              className: "mt-4 gap-2",
-            })}
-          >
-            <Plus className="size-4" />
-            Cadastrar veículo
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-5xl">
-            <DialogHeader>
-              <DialogTitle>Novo veículo</DialogTitle>
-            </DialogHeader>
-            <VeiculoForm
-              prefeituras={prefeituras}
-              secretarias={secretarias}
-              selectedPrefeituraId={selectedPrefeituraId}
-              showPrefeituraField={showPrefeituraField}
-            />
-          </DialogContent>
-        </Dialog>
+        <VeiculoCadastroDialog
+          prefeituras={prefeituras}
+          selectedPrefeituraId={selectedPrefeituraId}
+          showPrefeituraField={showPrefeituraField}
+          triggerLabel="Cadastrar veículo"
+        />
       ) : null}
     </div>
   );
 }
 
-function VeiculoDetails({
-  canUpdate,
-  veiculo,
-}: {
-  canUpdate: boolean;
-  veiculo: FrotaVeiculo;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="rounded-lg border bg-muted/20 p-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
-            {canUpdate ? (
-              <VeiculoFotoAvatarControl veiculo={veiculo} />
-            ) : (
-              <Avatar className="size-24 rounded-lg">
-                {veiculo.foto_url ? (
-                  <AvatarImage
-                    src={veiculo.foto_url}
-                    alt={`Foto do veículo ${veiculo.placa}`}
-                    className="rounded-lg"
-                  />
-                ) : null}
-                <AvatarFallback className="rounded-lg">
-                  <Car className="size-8" />
-                </AvatarFallback>
-              </Avatar>
-            )}
-            <div className="min-w-0 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="truncate text-lg font-semibold leading-none">
-                  {veiculo.modelo}
-                </h3>
-                <VehicleStatusBadge status={veiculo.status} />
-              </div>
-              <div>
-                                <div className="text-base font-medium leading-tight">
-                  {veiculo.marca} · {veiculo.ano_modelo ?? veiculo.ano}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {veiculo.situacao_veicular ?? "Situação não informada"} ·{" "}
-                  {veiculo.licenciado ?? "Licenciamento não informado"}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary" className="font-normal">
-                  <Hash className="size-3.5" />
-                  {veiculo.placa}
-                </Badge>
-                <Badge variant="outline" className="font-normal">
-                  <Fuel className="size-3.5" />
-                  {veiculo.combustivel ?? "-"}
-                </Badge>
-                {veiculo.cor ? (
-                  <Badge variant="outline" className="font-normal">
-                    {veiculo.cor}
-                  </Badge>
-                ) : null}
-                <Badge variant="outline" className="font-normal">
-                  <Gauge className="size-3.5" />
-                  {formatMileage(veiculo.quilometragem)}
-                </Badge>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2 sm:min-w-64">
-            <MetricTile label="Anexos" value={String(veiculo.anexos.length)} />
-            <MetricTile
-              label="Manutenções"
-              value={String(veiculo.manutencoes.length)}
-            />
-            <MetricTile
-              label="Débitos"
-              value={String(Object.values(veiculo.vencimentos).filter(Boolean).length)}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border p-2.5">
-          <div className="flex items-center gap-2 text-xs font-medium">
-            <Car className="size-3.5 text-muted-foreground" />
-            Identificação
-          </div>
-          <div className="mt-2 grid gap-1.5">
-            <CompactDetail label="Prefeitura" value={veiculo.prefeitura_nome} />
-            <CompactDetail label="Secretaria" value={veiculo.secretaria || "-"} />
-            <CompactDetail label="Tipo" value={veiculo.tipo} />
-            <CompactDetail label="Espécie" value={veiculo.especie ?? "-"} />
-            <CompactDetail label="Categoria" value={veiculo.categoria ?? "-"} />
-            <CompactDetail label="Prefixo" value={veiculo.prefixo || "-"} />
-            <CompactDetail label="Renavam" value={veiculo.renavam ?? "-"} />
-            <CompactDetail
-              label="Cadastro"
-              value={new Intl.DateTimeFormat("pt-BR").format(
-                new Date(veiculo.created_at)
-              )}
-            />
-          </div>
-        </div>
-
-        <div className="rounded-lg border p-2.5">
-          <div className="flex items-center gap-2 text-xs font-medium">
-            <CalendarClock className="size-3.5 text-muted-foreground" />
-            Operação
-          </div>
-          <div className="mt-2 grid gap-1.5">
-            <CompactDetail
-              label="Quilometragem"
-              value={formatMileage(veiculo.quilometragem)}
-            />
-            <CompactDetail label="Combustível" value={veiculo.combustivel ?? "-"} />
-            <CompactDetail label="Cor" value={veiculo.cor ?? "-"} />
-            <CompactDetail
-              label="Ano fabricação"
-              value={veiculo.ano_fabricacao ? String(veiculo.ano_fabricacao) : "-"}
-            />
-            <CompactDetail
-              label="Ano modelo"
-              value={veiculo.ano_modelo ? String(veiculo.ano_modelo) : "-"}
-            />
-            <CompactDetail label="Lugares" value={veiculo.lugares ?? "-"} />
-            <CompactDetail
-              label="Foto"
-              value={veiculo.foto_url ? "Cadastrada" : "Pendente"}
-            />
-            <CompactDetail
-              label="Anexos"
-              value={`${veiculo.anexos.length} documento(s)`}
-            />
-            <div className="rounded-md bg-muted/35 px-2.5 py-1.5">
-              <div className="mb-1 text-xs text-muted-foreground">
-                Débitos
-              </div>
-              <VehicleDueDates vencimentos={veiculo.vencimentos} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border p-2.5">
-          <div className="flex items-center gap-2 text-xs font-medium">
-            <Hash className="size-3.5 text-muted-foreground" />
-            Dados oficiais
-          </div>
-          <div className="mt-2 grid gap-1.5">
-            <CompactDetail
-              label="Data aquisição"
-              value={formatVehicleDate(veiculo.data_aquisicao)}
-            />
-            <CompactDetail
-              label="Município emplacamento"
-              value={veiculo.municipio_emplacamento ?? "-"}
-            />
-            <CompactDetail
-              label="Situação"
-              value={veiculo.situacao_veicular ?? "-"}
-            />
-            <CompactDetail
-              label="Licenciado"
-              value={veiculo.licenciado ?? "-"}
-            />
-            <CompactDetail
-              label="Origem"
-              value={veiculo.origem_dados ?? "Cadastro"}
-            />
-          </div>
-        </div>
-
-        <div className="rounded-lg border p-2.5">
-          <div className="flex items-center gap-2 text-xs font-medium">
-            <Car className="size-3.5 text-muted-foreground" />
-            Proprietários e restrições
-          </div>
-          <div className="mt-2 grid gap-1.5">
-            <CompactDetail
-              label="Proprietário atual"
-              value={veiculo.proprietario_atual ?? "-"}
-            />
-            <CompactDetail
-              label="Proprietário anterior"
-              value={veiculo.proprietario_anterior ?? "-"}
-            />
-            <CompactDetail
-              label="Restrição venda"
-              value={veiculo.restricao_venda ?? "-"}
-            />
-            <CompactDetail
-              label="Principal condutor"
-              value={veiculo.principal_condutor ?? "-"}
-            />
-          </div>
-        </div>
-      </div>
-
-      {veiculo.restricoes || veiculo.observacoes ? (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {veiculo.restricoes ? (
-            <div className="rounded-lg border p-2.5">
-              <div className="text-xs font-medium">Restrições</div>
-              <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-                {veiculo.restricoes}
-              </p>
-            </div>
-          ) : null}
-          {veiculo.observacoes ? (
-            <div className="rounded-lg border p-2.5">
-              <div className="text-xs font-medium">Observações</div>
-              <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-                {veiculo.observacoes}
-              </p>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function CompactDetail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-md bg-muted/35 px-2.5 py-1.5 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="truncate text-right font-medium">{value}</span>
-    </div>
-  );
-}
-
-function MetricTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border bg-background px-2.5 py-1.5">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="truncate text-base font-semibold leading-tight">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function formatMileage(value: number | null) {
-  if (value === null) {
-    return "-";
-  }
-
-  return `${new Intl.NumberFormat("pt-BR").format(value)} km`;
-}
-
-function formatVehicleDate(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "UTC",
-  }).format(new Date(`${value}T00:00:00.000Z`));
-}
-
-function VehicleStatusBadge({ status }: { status: VeiculoStatus }) {
+function VehicleStatusBadge({ status, lookupStatus }: { status: VeiculoStatus; lookupStatus?: string | null }) {
   const styles: Record<VeiculoStatus, string> = {
     active:
       "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50",
@@ -866,58 +496,22 @@ function VehicleStatusBadge({ status }: { status: VeiculoStatus }) {
       "border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100",
     maintenance:
       "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50",
-    consult_error: "border-red-200 bg-red-50 text-red-700 hover:bg-red-50",
+    consult_error: lookupStatus === "error" ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-50" : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50",
     processing: "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50",
   };
   const icons = {
     active: CircleCheck,
-    consult_error: CircleX,
+    consult_error: lookupStatus === "error" ? CircleX : ClipboardCheck,
     inactive: CircleX,
     maintenance: Wrench,
-    processing: Loader2,
+    processing: LoaderCircle,
   } satisfies Record<VeiculoStatus, typeof CircleCheck>;
   const Icon = icons[status];
 
   return (
     <Badge variant="outline" className={styles[status]}>
       <Icon className={status === "processing" ? "size-3.5 animate-spin" : "size-3.5"} />
-      {formatVeiculoStatus(status)}
+      {status === "consult_error" && lookupStatus === "error" ? "Falha na consulta" : formatVeiculoStatus(status)}
     </Badge>
-  );
-}
-
-function VehicleDueDates({
-  vencimentos,
-}: {
-  vencimentos: Partial<Record<VencimentoTipo, string>>;
-}) {
-  const items: VencimentoTipo[] = ["seguro", "ipva", "licenciamento"];
-  const visibleItems = items
-    .map((tipo) => ({
-      data: vencimentos[tipo],
-      tipo,
-    }))
-    .filter(
-      (item): item is { data: string; tipo: VencimentoTipo } =>
-        Boolean(item.data)
-    );
-
-  if (!visibleItems.length) {
-    return <span className="text-sm text-muted-foreground">Sem débitos</span>;
-  }
-
-  return (
-    <div className="flex max-w-[380px] flex-wrap gap-1">
-      {visibleItems.map((item) => (
-        <Badge
-          key={item.tipo}
-          variant="outline"
-          className="font-normal"
-        >
-          <CalendarClock className="size-3" />
-          {`${formatVencimentoTipo(item.tipo)} ${formatFrotaDate(item.data)}`}
-        </Badge>
-      ))}
-    </div>
   );
 }

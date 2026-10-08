@@ -234,7 +234,7 @@ on public.frota_multas_veiculares (veiculo_id, numero_auto)
 where origem = 'manual';
 
 insert into public.modulos (nome, slug, subdominio)
-values ('Frotas Públicas', 'frotas-publicas', 'frotaspublicas.bdltech.com.br')
+values ('Vibe Frotas', 'frotas-publicas', 'frotaspublicas.bdltech.com.br')
 on conflict (slug) do nothing;
 
 insert into public.permissoes (modulo_id, chave, nome, descricao)
@@ -246,11 +246,11 @@ select
 from public.modulos
 cross join (
   values
-    ('vehicles.create', 'Cadastrar veículos', 'Permite cadastrar veículos no módulo Frotas Públicas.'),
-    ('vehicles.update', 'Editar veículos', 'Permite editar veículos no módulo Frotas Públicas.'),
-    ('vehicles.delete', 'Excluir veículos', 'Permite excluir veículos no módulo Frotas Públicas.'),
+    ('vehicles.create', 'Cadastrar veículos', 'Permite cadastrar veículos no módulo Vibe Frotas.'),
+    ('vehicles.update', 'Editar veículos', 'Permite editar veículos no módulo Vibe Frotas.'),
+    ('vehicles.delete', 'Excluir veículos', 'Permite excluir veículos no módulo Vibe Frotas.'),
     ('vehicles.manage', 'Gerenciamento de veículos', 'Permite acessar recursos de gerenciamento de veículos.'),
-    ('vehicles.read', 'Visualizar veículos', 'Permite visualizar veículos no módulo Frotas Públicas.'),
+    ('vehicles.read', 'Visualizar veículos', 'Permite visualizar veículos no módulo Vibe Frotas.'),
     ('expirations.manage', 'Gerenciar débitos', 'Permite registrar e controlar débitos e pagamentos dos veículos.'),
     ('expirations.read', 'Visualizar débitos', 'Permite consultar débitos dos veículos.')
 ) as permissoes(chave, nome, descricao)

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/item";
 
 export type PrefeituraComboboxOption = {
+  nome_fantasia?: string | null;
   cidade?: string | null;
   cnpj?: string | null;
   id: string;
@@ -38,7 +39,7 @@ export function PrefeituraCombobox({
   id,
   invalid,
   onChange,
-  placeholder = "Pesquisar prefeitura",
+  placeholder = "Pesquisar empresa",
   prefeituras,
   value,
 }: PrefeituraComboboxProps) {
@@ -58,6 +59,7 @@ export function PrefeituraCombobox({
       itemToStringValue={(prefeitura: PrefeituraComboboxOption) =>
         [
           prefeitura.nome,
+          prefeitura.nome_fantasia,
           prefeitura.cnpj,
           prefeitura.cidade,
           prefeitura.uf,
@@ -77,7 +79,7 @@ export function PrefeituraCombobox({
         aria-invalid={invalid}
       />
       <ComboboxContent>
-        <ComboboxEmpty>Nenhuma prefeitura encontrada.</ComboboxEmpty>
+        <ComboboxEmpty>Nenhuma empresa encontrada.</ComboboxEmpty>
         <ComboboxList>
           {(prefeitura: PrefeituraComboboxOption) => (
             <ComboboxItem key={prefeitura.id} value={prefeitura}>
@@ -102,5 +104,5 @@ export function PrefeituraCombobox({
 function getPrefeituraDescription(prefeitura: PrefeituraComboboxOption) {
   const location = [prefeitura.cidade, prefeitura.uf].filter(Boolean).join(" · ");
 
-  return [prefeitura.cnpj, location].filter(Boolean).join(" · ") || "Cliente municipal";
+  return [prefeitura.cnpj, location].filter(Boolean).join(" · ") || "Empresa";
 }

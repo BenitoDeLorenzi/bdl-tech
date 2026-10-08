@@ -1,0 +1,33 @@
+begin;
+do $$
+declare a uuid:=gen_random_uuid(); e uuid:=gen_random_uuid(); u uuid; m uuid; c uuid; p uuid; p2 uuid; f uuid:=gen_random_uuid(); x jsonb; bad text;
+begin
+ insert into auth.users(id,email) values(a,a||'@closingprice.test');
+ insert into public.perfis(id,nome,role,ativo) values(a,'Preço teste','bdl_admin',true);
+ insert into public.empresas(id,nome,status) values(e,'Preço fechamento teste','active');
+ select id into m from public.modulos where slug='gestao-estabelecimentos';
+ insert into public.licencas(prefeitura_id,modulo_id,status,inicio,fim,valor_anual) values(e,m,'active',current_date-1,current_date+1,0);
+ select id into u from public.gestao_unidades where empresa_id=e;
+ select id into c from public.gestao_categorias where empresa_id=e limit 1;
+ p:=public.gestao_operar(a,'produto',jsonb_build_object('unidade_id',u,'nome','Com estoque','categoria_id',c,'unidade','un','minimo',0));
+ p2:=public.gestao_operar(a,'produto',jsonb_build_object('unidade_id',u,'nome','Sem estoque','categoria_id',c,'unidade','un','minimo',0,'preco',7.5,'controlar_estoque',false));
+ x:=jsonb_build_object('id',f,'versao',0,'unidade_id',u,'data',current_date,'turno','dia','origem','teste','itens',jsonb_build_array(jsonb_build_object('produto_id',p,'quantidade',2,'preco_unitario',5,'total',9),jsonb_build_object('produto_id',p2,'quantidade',1,'preco_unitario',8,'total',8)),'pagamentos',jsonb_build_array(jsonb_build_object('forma','Pix','origem','Conta','valor',17)));
+ perform public.gestao_operar(a,'salvar',x);
+ begin perform public.gestao_excluir_rascunho(a,u,f,99);raise exception 'FAIL version';exception when raise_exception then if sqlerrm not like '%foi alterado%' then raise;end if;end;
+ begin perform public.gestao_excluir_rascunho(a,gen_random_uuid(),f,1);raise exception 'FAIL scope';exception when raise_exception then if sqlerrm not like '%acesso de gestor%' then raise;end if;end;
+ begin perform public.gestao_excluir_rascunho(gen_random_uuid(),u,f,1);raise exception 'FAIL actor';exception when raise_exception then if sqlerrm not like '%acesso de gestor%' then raise;end if;end;
+ perform public.gestao_excluir_rascunho(a,u,f,1);
+ if exists(select 1 from public.gestao_fechamentos where id=f) then raise exception 'FAIL deletion';end if;
+ if not exists(select 1 from public.gestao_auditoria where registro_id=f and acao='excluir_rascunho' and dados->'anterior'->>'id'=f::text) then raise exception 'FAIL audit';end if;
+ if exists(select 1 from public.gestao_movimentos where fechamento_id=f) or (select saldo from public.gestao_produtos where id=p)<>0 then raise exception 'FAIL stock changed';end if;
+ begin perform public.gestao_operar(a,'salvar',x);raise exception 'FAIL resurrection';exception when raise_exception then if sqlerrm not like '%foi excluído%' then raise;end if;end;
+ f:=gen_random_uuid();x:=x||jsonb_build_object('id',f);
+ perform public.gestao_operar(a,'salvar',x);
+ perform public.gestao_operar(a,'confirmar',jsonb_build_object('id',f,'unidade_id',u,'versao',1));
+ begin perform public.gestao_excluir_rascunho(a,u,f,2);raise exception 'FAIL confirmed';exception when raise_exception then if sqlerrm not like '%Somente rascunhos%' then raise;end if;end;
+ perform public.gestao_operar(a,'reabrir',jsonb_build_object('id',f,'unidade_id',u,'versao',2,'motivo','Reabrir para teste'));
+ begin perform public.gestao_excluir_rascunho(a,u,f,3);raise exception 'FAIL reopened';exception when raise_exception then if sqlerrm not like '%histórico deve ser preservado%' then raise;end if;end;
+ if has_function_privilege('authenticated','public.gestao_excluir_rascunho(uuid,uuid,uuid,integer)','execute') then raise exception 'FAIL rpc grant';end if;
+end $$;
+select 'PASS: draft deletion, actor/scope/version guards, audit, stock preservation, stale save blocked, confirmed/reopened blocked, RPC permissions' result;
+rollback;

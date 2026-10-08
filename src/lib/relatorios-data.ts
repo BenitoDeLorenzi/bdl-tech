@@ -19,6 +19,7 @@ export type RelatorioTipo = "expirations" | "fuel" | "maintenance" | "vehicles";
 export type RelatorioFiltros = {
   combustivel?: string | null;
   posto_id?: string | null;
+  /** Somente para reproduzir filtros de relatórios históricos; novos relatórios não usam secretaria. */
   secretaria?: string | null;
   status?: string | null;
   veiculo_id?: string | null;
@@ -79,7 +80,7 @@ export async function getRelatorios(params?: {
   let query = supabase
     .from("frota_relatorios")
     .select(
-      "id,prefeitura_id,tipo,titulo,periodo_inicio,periodo_fim,filtros,total_registros,valor_total,status,created_at,prefeituras(nome,brasao_url),perfis(nome)"
+      "id,prefeitura_id,tipo,titulo,periodo_inicio,periodo_fim,filtros,total_registros,valor_total,status,created_at,prefeituras:empresas(nome,brasao_url),perfis(nome)"
     )
     .order("created_at", { ascending: false });
 
@@ -129,7 +130,7 @@ export async function getRelatorio(id: string) {
   const { data, error } = await supabase
     .from("frota_relatorios")
     .select(
-      "id,prefeitura_id,tipo,titulo,periodo_inicio,periodo_fim,filtros,total_registros,valor_total,status,created_at,prefeituras(nome,brasao_url),perfis(nome)"
+      "id,prefeitura_id,tipo,titulo,periodo_inicio,periodo_fim,filtros,total_registros,valor_total,status,created_at,prefeituras:empresas(nome,brasao_url),perfis(nome)"
     )
     .eq("id", id)
     .single();

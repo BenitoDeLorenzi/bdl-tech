@@ -1,11 +1,15 @@
 "use client";
 
+import { FormDialogCancel } from "@/components/form-dialog-cancel";
+
 import { startTransition, useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
+import { formatCpf, type MotoristaOption } from "@/lib/uso-veiculos-data";
 import { VeiculoCombobox } from "@/components/veiculo-combobox";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
@@ -17,6 +21,7 @@ import { createUsoVeiculo } from "./actions";
 
 type UsoVeiculoFormProps = {
   veiculos: FrotaVeiculo[];
+  motoristas: MotoristaOption[];
 };
 
 type UsoVeiculoFormValues = {
@@ -29,7 +34,7 @@ type UsoVeiculoFormValues = {
   veiculo_id: string | null;
 };
 
-export function UsoVeiculoForm({ veiculos }: UsoVeiculoFormProps) {
+export function UsoVeiculoForm({ veiculos, motoristas }: UsoVeiculoFormProps) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, actionPending] = useActionState(
@@ -47,6 +52,7 @@ export function UsoVeiculoForm({ veiculos }: UsoVeiculoFormProps) {
       veiculo_id: null,
     },
   });
+  const motoristaCpf = useWatch({ control: form.control, name: "funcionario_cpf" });
   const selectedVehicleId = useWatch({
     control: form.control,
     name: "veiculo_id",
@@ -150,12 +156,8 @@ export function UsoVeiculoForm({ veiculos }: UsoVeiculoFormProps) {
           </div>
 
           {selectedVehicle ? (
-            <div className="grid gap-2 rounded-lg border bg-muted/25 p-3 text-sm sm:grid-cols-3">
+            <div className="grid gap-2 rounded-lg border bg-muted/25 p-3 text-sm sm:grid-cols-2">
               <CompactInfo label="Placa" value={selectedVehicle.placa} />
-              <CompactInfo
-                label="Secretaria"
-                value={selectedVehicle.secretaria || "-"}
-              />
               <CompactInfo
                 label="Km atual"
                 value={
@@ -168,14 +170,54 @@ export function UsoVeiculoForm({ veiculos }: UsoVeiculoFormProps) {
           ) : null}
 
           <div className="grid gap-3 sm:grid-cols-12">
-            <TextField
-              className="sm:col-span-7"
+            <Controller
               control={form.control}
-              disabled={actionPending}
-              label="Funcionário"
               name="funcionario_nome"
-              placeholder="Nome de quem retirou o veículo"
-              rules={{ required: "Informe o funcionário." }}
+              rules={{ required: "Informe o motorista." }}
+              render={({ field, fieldState }) => (
+                <Field className="sm:col-span-7" data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="funcionario_nome">Motorista</FieldLabel>
+                  <Combobox
+                    items={motoristas}
+                    value={motoristas.find((item) => item.nome === field.value && (item.cpf ?? "").replace(/\D/g, "") === motoristaCpf.replace(/\D/g, "")) ?? null}
+                    inputValue={field.value}
+                    onInputValueChange={(value, details) => {
+                      if (details.reason === "input-change") {
+                        field.onChange(value);
+                        form.setValue("funcionario_cpf", "");
+                      }
+                    }}
+                    onValueChange={(motorista: MotoristaOption | null) => {
+                      if (motorista) {
+                        field.onChange(motorista.nome);
+                        form.setValue("funcionario_cpf", formatCpfInput(motorista.cpf ?? ""), { shouldValidate: true });
+                      }
+                    }}
+                    itemToStringLabel={(motorista: MotoristaOption) => motorista.nome}
+                    filter={(motorista: MotoristaOption, query: string) => {
+                      const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                      return normalize(motorista.nome).includes(normalize(query)) || Boolean(query.replace(/\D/g, "") && motorista.cpf?.replace(/\D/g, "").includes(query.replace(/\D/g, "")));
+                    }}
+                    disabled={actionPending}
+                  >
+                    <ComboboxInput id="funcionario_nome" ref={field.ref} onBlur={field.onBlur} aria-invalid={fieldState.invalid} placeholder="Pesquise por nome ou CPF, ou digite um novo nome" />
+                    <ComboboxContent>
+                      <ComboboxEmpty>Nenhum motorista encontrado. Informe o nome e o CPF para cadastrar.</ComboboxEmpty>
+                      <ComboboxList>
+                        {(motorista: MotoristaOption) => (
+                          <ComboboxItem key={motorista.id} value={motorista}>
+                            <div className="flex flex-col gap-0.5">
+                              <span>{motorista.nome}</span>
+                              <span className="text-xs text-muted-foreground">{formatCpf(motorista.cpf)}</span>
+                            </div>
+                          </ComboboxItem>
+                        )}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
             />
             <TextField
               className="sm:col-span-5"
@@ -185,9 +227,12 @@ export function UsoVeiculoForm({ veiculos }: UsoVeiculoFormProps) {
               label="CPF"
               name="funcionario_cpf"
               placeholder="000.000.000-00"
+              rules={{ validate: (value) => !value || String(value).replace(/\D/g, "").length === 11 || "Informe um CPF com 11 dígitos." }}
               transform={formatCpfInput}
             />
           </div>
+
+          <p className="text-xs text-muted-foreground">Um novo motorista será cadastrado ao registrar a retirada com nome e CPF.</p>
 
           <div className="grid gap-3 sm:grid-cols-12">
             <TextField
@@ -196,7 +241,7 @@ export function UsoVeiculoForm({ veiculos }: UsoVeiculoFormProps) {
               disabled={actionPending}
               label="Destino"
               name="destino"
-              placeholder="Ex. Secretaria de Saúde"
+              placeholder="Ex. Filial ou endereço de destino"
             />
             <TextField
               className="sm:col-span-6"
@@ -228,6 +273,7 @@ export function UsoVeiculoForm({ veiculos }: UsoVeiculoFormProps) {
       </fieldset>
 
       <DialogFooter>
+        <FormDialogCancel disabled={actionPending} />
         <Button type="submit" className="gap-2" disabled={actionPending}>
           {actionPending ? (
             <Loader2 className="size-4 animate-spin" />

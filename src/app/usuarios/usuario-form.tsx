@@ -16,7 +16,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PrefeituraCombobox } from "@/components/prefeitura-combobox";
+import { EmpresaCombobox } from "@/components/empresa-combobox";
 import {
   Select,
   SelectContent,
@@ -48,9 +48,9 @@ type UsuarioFormProps = {
 };
 
 const roleItems = [
-  { label: "Administrador", value: "bdl_admin" },
-  { label: "Administrador Municipal", value: "municipal_admin" },
-  { label: "Usuário municipal", value: "municipal_user" },
+  { label: "Master", value: "bdl_admin" },
+  { label: "Administrador", value: "municipal_admin" },
+  { label: "Usuário", value: "municipal_user" },
 ];
 
 const statusItems = [
@@ -268,15 +268,15 @@ export function UsuarioForm({ prefeituras, usuario }: UsuarioFormProps) {
             <Controller
               control={form.control}
               name="prefeitura_id"
-              rules={{ required: "Selecione a prefeitura." }}
+              rules={{ required: "Selecione a empresa." }}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="prefeitura_id">Prefeitura</FieldLabel>
-                  <PrefeituraCombobox
+                  <FieldLabel htmlFor="prefeitura_id">Empresa</FieldLabel>
+                  <EmpresaCombobox
                     id="prefeitura_id"
                     value={field.value}
                     onChange={field.onChange}
-                    prefeituras={prefeituras}
+                    empresas={prefeituras}
                     disabled={actionPending}
                     invalid={fieldState.invalid}
                   />
@@ -308,6 +308,12 @@ export function UsuarioForm({ prefeituras, usuario }: UsuarioFormProps) {
         </FieldGroup>
       </fieldset>
 
+      {isEditing ? (
+        <p className="text-sm text-muted-foreground">
+          Ao trocar a empresa ou o perfil, os acessos anteriores serão removidos.
+          Configure as novas permissões após salvar.
+        </p>
+      ) : null}
       <DialogFooter>
         <Button type="submit" className="gap-2" disabled={actionPending}>
           {actionPending ? (

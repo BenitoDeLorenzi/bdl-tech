@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 
 import {
   Card,
@@ -25,10 +25,10 @@ export default async function LoginPage() {
       <section className="hidden min-h-screen flex-col justify-between bg-primary p-8 text-primary-foreground lg:flex">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-lg bg-primary-foreground text-primary">
-            <ShieldCheck className="size-5" />
+            <BrandMark />
           </div>
           <div>
-            <div className="text-lg font-semibold">BDL Tech</div>
+            <div className="text-lg font-semibold">Vibe Tech</div>
             <div className="text-sm text-primary-foreground/70">
               Portal administrativo
             </div>
@@ -40,12 +40,12 @@ export default async function LoginPage() {
             Acesse seus módulos.
           </h1>
           <p className="text-sm leading-6 text-primary-foreground/70">
-            Portal operacional da BDL Tech para clientes e equipe interna.
+            Portal operacional da Vibe Tech para clientes e equipe interna.
           </p>
         </div>
 
         <div className="text-sm text-primary-foreground/60">
-          bdltech.com.br
+          Vibe Tech
         </div>
       </section>
 
@@ -53,7 +53,7 @@ export default async function LoginPage() {
         <Card className="w-full max-w-[420px] shadow-sm">
           <CardHeader className="space-y-2">
             <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground lg:hidden">
-              <ShieldCheck className="size-5" />
+              <BrandMark />
             </div>
             <CardTitle className="text-2xl">Entrar no portal</CardTitle>
             <CardDescription>Informe seu CPF para continuar.</CardDescription>

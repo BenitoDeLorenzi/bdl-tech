@@ -1,677 +1,105 @@
-import {
-  AlertTriangle,
-  CalendarClock,
-  Car,
-  CheckCircle2,
-  CircleGauge,
-  Clock3,
-  Fuel,
-  ShieldAlert,
-  TrendingUp,
-  Wrench,
-} from "lucide-react";
-
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { ArrowRight, CalendarClock, Car, CheckCircle2, CircleGauge, Fuel, KeyRound, Wrench } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { ListMetrics } from "@/components/list-metrics";
 import { requireUserProfile } from "@/lib/auth-data";
-import {
-  formatAbastecimentoStatus,
-  formatFrotaDate,
-  formatFrotaDaysRemaining,
-  formatManutencaoStatus,
-  formatVencimentoTipo,
-  formatVeiculoStatus,
-  getAbastecimentosData,
-  getManutencoesData,
-  type AbastecimentoStatus,
-  type FrotaAbastecimento,
-  type FrotaManutencao,
-  type FrotaVencimento,
-  type VeiculoStatus,
-} from "@/lib/frotas-data";
+import { getFrotasPermissionAccess } from "@/lib/frotas-permissions";
+import { formatFrotaDate, formatFrotaDaysRemaining, formatVencimentoTipo, getAbastecimentosData, getManutencoesData } from "@/lib/frotas-data";
+import { getUsoVeiculosData } from "@/lib/uso-veiculos-data";
+import { getDashboardMetrics } from "@/lib/frotas-dashboard-metrics";
 import { cn } from "@/lib/utils";
 import { FrotasShell } from "./frotas-shell";
 
 export const dynamic = "force-dynamic";
-
-type PageProps = {
-  searchParams: Promise<{
-    prefeitura?: string;
-  }>;
-};
-
-const vehicleStatusMeta: Record<
-  VeiculoStatus,
-  {
-    badge: string;
-    label: string;
-  }
-> = {
-  active: {
-    badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    label: "Ativos",
-  },
-  inactive: {
-    badge: "border-zinc-200 bg-zinc-50 text-zinc-700",
-    label: "Inativos",
-  },
-  consult_error: {
-    badge: "border-red-200 bg-red-50 text-red-700",
-    label: "Falha na consulta",
-  },
-  maintenance: {
-    badge: "border-amber-200 bg-amber-50 text-amber-700",
-    label: "Em manutenção",
-  },
-  processing: {
-    badge: "border-sky-200 bg-sky-50 text-sky-700",
-    label: "Processando",
-  },
-};
-
-const abastecimentoStatusMeta: Record<
-  AbastecimentoStatus,
-  {
-    badge: string;
-    label: string;
-  }
-> = {
-  cancelled: {
-    badge: "border-zinc-200 bg-zinc-50 text-zinc-700",
-    label: "Canceladas",
-  },
-  completed: {
-    badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    label: "Concluídas",
-  },
-  expired: {
-    badge: "border-red-200 bg-red-50 text-red-700",
-    label: "Vencidas",
-  },
-  issued: {
-    badge: "border-amber-200 bg-amber-50 text-amber-700",
-    label: "Pendentes",
-  },
+type PageProps = { searchParams: Promise<{ prefeitura?: string }> };
+const tones = {
+  green: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  blue: "bg-sky-500/10 text-sky-700 dark:text-sky-400",
+  amber: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  red: "bg-red-500/10 text-red-700 dark:text-red-400",
 };
 
 export default async function FrotasDashboardPage({ searchParams }: PageProps) {
   const profile = await requireUserProfile();
   const params = await searchParams;
-  const prefeituraId =
-    profile.role === "bdl_admin"
-      ? params.prefeitura
-      : profile.prefeitura_id ?? undefined;
-
-  const [manutencoesData, abastecimentosData] = await Promise.all([
-    getManutencoesData({ prefeituraId }),
-    getAbastecimentosData({ prefeituraId }),
+  const prefeituraId = profile.role === "bdl_admin" ? params.prefeitura : profile.prefeitura_id ?? undefined;
+  const [fuelData, maintenanceData, usageData, access] = await Promise.all([
+    getAbastecimentosData({ prefeituraId }), getManutencoesData({ prefeituraId }),
+    getUsoVeiculosData({ prefeituraId }), getFrotasPermissionAccess(profile),
   ]);
-  const data = abastecimentosData;
-  const selectedPrefeitura = data.prefeituras.find(
-    (prefeitura) => prefeitura.id === data.selectedPrefeituraId
-  );
-  const manutencoes = manutencoesData.manutencoes;
-  const abastecimentos = abastecimentosData.abastecimentos;
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now);
-  thirtyDaysAgo.setDate(now.getDate() - 30);
-
-  const debitosCriticos = data.vencimentos
-    .filter((vencimento) => vencimento.status !== "paid")
-    .filter((vencimento) => vencimento.dias_restantes <= 30)
-    .sort((a, b) => a.dias_restantes - b.dias_restantes)
-    .slice(0, 5);
-  const manutencoesAbertas = manutencoes
-    .filter((manutencao) => manutencao.status === "open")
-    .slice(0, 5);
-  const ultimosAbastecimentos = abastecimentos
-    .filter((abastecimento) => abastecimento.status === "completed")
-    .slice(0, 5);
-  const abastecimentosRecentes = abastecimentos.filter((abastecimento) => {
-    if (abastecimento.status !== "completed") {
-      return false;
-    }
-
-    const date = new Date(
-      abastecimento.completed_at ?? `${abastecimento.data_abastecimento}T00:00:00`
-    );
-
-    return date >= thirtyDaysAgo;
-  });
-
-  const valorAbastecimento30Dias = abastecimentosRecentes.reduce(
-    (total, abastecimento) => total + getAbastecimentoTotal(abastecimento),
-    0
-  );
-  const litros30Dias = abastecimentosRecentes.reduce(
-    (total, abastecimento) =>
-      total + (abastecimento.litros ?? 0) + (abastecimento.arla_litros ?? 0),
-    0
-  );
-  const ordensPendentes = abastecimentos.filter(
-    (abastecimento) =>
-      abastecimento.status === "issued" &&
-      (!abastecimento.expires_at || new Date(abastecimento.expires_at) >= now)
-  ).length;
-  const ordensVencidas = abastecimentos.filter(
-    (abastecimento) =>
-      abastecimento.status === "expired" ||
-      (abastecimento.status === "issued" &&
-        abastecimento.expires_at &&
-        new Date(abastecimento.expires_at) < now)
-  ).length;
-
-  const totalVeiculos = data.veiculos.length;
-  const activeVehicles = data.veiculos.filter(
-    (veiculo) => veiculo.status === "active"
-  ).length;
-  const maintenanceVehicles = data.veiculos.filter(
-    (veiculo) => veiculo.status === "maintenance"
-  ).length;
-  const inactiveVehicles = data.veiculos.filter(
-    (veiculo) => veiculo.status === "inactive"
-  ).length;
-  const processingVehicles = data.veiculos.filter(
-    (veiculo) => veiculo.status === "processing"
-  ).length;
-  const consultErrorVehicles = data.veiculos.filter(
-    (veiculo) => veiculo.status === "consult_error"
-  ).length;
-  const fleetAvailability =
-    totalVeiculos > 0 ? Math.round((activeVehicles / totalVeiculos) * 100) : 0;
-
+  const metrics = getDashboardMetrics(fuelData.veiculos, usageData.usos, maintenanceData.manutencoes, fuelData.abastecimentos);
+  const debts = fuelData.vencimentos.filter(item => item.status !== "paid" && item.dias_restantes <= 30).sort((a,b) => a.dias_restantes-b.dias_restantes);
+  const overdue = debts.filter(item => item.dias_restantes < 0).length;
+  const href = (path: string, status?: string) => {
+    const query = new URLSearchParams();
+    if (fuelData.selectedPrefeituraId) query.set("prefeitura", fuelData.selectedPrefeituraId);
+    if (status) query.set("status", status);
+    return `${path}${query.size ? `?${query}` : ""}`;
+  };
   return (
-    <FrotasShell
-      active="dashboard"
-      icon={CircleGauge}
-      prefeituras={data.prefeituras}
-      profile={profile}
-      selectedPrefeituraId={data.selectedPrefeituraId}
-      title="Visão geral"
-    >
+    <FrotasShell active="dashboard" icon={CircleGauge} prefeituras={fuelData.prefeituras} profile={profile} selectedPrefeituraId={fuelData.selectedPrefeituraId} title="Painel">
       <main className="flex flex-1 flex-col gap-4 p-4">
-        <Card className="border-foreground/10 bg-gradient-to-r from-card via-card to-muted/40">
-          <CardContent className="flex flex-col gap-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CircleGauge className="size-4" />
-                Frotas Públicas
+        <section aria-label="Indicadores da frota" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {access.canViewVeiculos ? <Metric icon={Car} label="Veículos disponíveis" value={String(metrics.available)} note={`${fuelData.veiculos.length} cadastrados · ${metrics.availability}% disponíveis`} tone="green" href={href("/frotas/veiculos")} /> : null}
+          {access.canViewUsoVeiculo ? <Metric icon={KeyRound} label="Veículos em uso" value={String(metrics.inUse)} note={`${metrics.openUsages.length} retirada(s) em aberto`} tone="blue" href={href("/frotas/uso-veiculo", "in_use")} /> : null}
+          {access.canViewManutencao ? <Metric icon={Wrench} label="Manutenções abertas" value={String(metrics.openMaintenance.length)} note={`${metrics.maintenanceVehicles} veículo(s) em manutenção`} tone="amber" href={href("/frotas/manutencao", "open")} /> : null}
+          {access.canViewAbastecimento ? <Metric icon={Fuel} label="Abastecimento · 30 dias" value={currency(metrics.fuelCost)} note={`${metrics.recentFuel.length} concluído(s) · ${metrics.liters.toLocaleString("pt-BR")} L de combustível`} tone="blue" href={href("/frotas/abastecimento")} /> : null}
+        </section>
+
+        {(access.canManageVencimentos || access.canViewAbastecimento) ? <Card>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-medium">Precisa de atenção</h2>
+              <div className="flex flex-wrap gap-2">
+                {access.canManageVencimentos ? <ListMetrics items={[{ label: "Vencidos", value: overdue, tone: overdue ? "warning" : "neutral" }, { label: "A vencer em 30 dias", value: debts.length-overdue, tone: "neutral" }]} /> : null}
               </div>
-              <h2 className="mt-1 truncate text-2xl font-semibold">
-                {formatPrefeituraName(selectedPrefeitura?.nome ?? "Prefeitura")}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Panorama operacional da frota municipal com base nos registros
-                atuais.
-              </p>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-right">
-              <HeroStat label="Disponibilidade" value={`${fleetAvailability}%`} />
-              <HeroStat label="Veículos" value={totalVeiculos.toString()} />
-              <HeroStat label="Pendências" value={(data.metricas.vencidos + ordensVencidas).toString()} />
-            </div>
+            {access.canViewAbastecimento ? <div className="grid gap-2 sm:grid-cols-2">
+              <AttentionLink href={href("/frotas/abastecimento", "issued")} label="Ordens de abastecimento pendentes" count={metrics.pendingFuel} tone="amber" />
+              <AttentionLink href={href("/frotas/abastecimento", "expired")} label="Ordens de abastecimento vencidas" count={metrics.expiredFuel} tone="red" />
+            </div> : null}
+            {access.canManageVencimentos ? (debts.length ? <div className="divide-y rounded-lg border">
+              {debts.slice(0,5).map(debt => <Link key={debt.id} href={`/frotas/veiculos/${debt.veiculo_id}/debitos`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring">
+                <div className="flex min-w-0 items-center gap-3"><CalendarClock className="size-4 shrink-0 text-muted-foreground" /><div><div className="text-sm font-medium">{debt.modelo} · {debt.placa}</div><div className="text-xs text-muted-foreground">{formatVencimentoTipo(debt.tipo)} · {formatFrotaDate(debt.data_vencimento)}</div></div></div>
+                <Badge variant="outline" className={debt.dias_restantes < 0 ? tones.red : tones.amber}>{formatFrotaDaysRemaining(debt.dias_restantes)}</Badge>
+              </Link>)}
+              {debts.length > 5 ? <p className="px-3 py-2 text-xs text-muted-foreground">Exibindo os 5 prazos mais próximos de {debts.length} débitos.</p> : null}
+            </div> : <Empty text="Nenhum débito vencido ou a vencer nos próximos 30 dias." />) : null}
           </CardContent>
-        </Card>
+        </Card> : null}
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <MetricCard
-            icon={Car}
-            label="Frota cadastrada"
-            note={`${activeVehicles} ativo(s)`}
-            value={totalVeiculos.toString()}
-          />
-          <MetricCard
-            icon={Wrench}
-            label="Em manutenção"
-            note={`${manutencoesAbertas.length} ordem(ns) aberta(s)`}
-            value={maintenanceVehicles.toString()}
-            variant="warning"
-          />
-          <MetricCard
-            icon={CalendarClock}
-            label="Débitos em 30 dias"
-            note={`${data.metricas.vencidos} vencido(s)`}
-            value={data.metricas.vencendo.toString()}
-            variant={data.metricas.vencidos > 0 ? "danger" : "default"}
-          />
-          <MetricCard
-            icon={Fuel}
-            label="Ordens pendentes"
-            note={`${ordensVencidas} vencida(s)`}
-            value={ordensPendentes.toString()}
-            variant={ordensVencidas > 0 ? "danger" : "warning"}
-          />
-          <MetricCard
-            icon={TrendingUp}
-            label="Abastecimento 30 dias"
-            note={`${formatDecimal(litros30Dias)} L registrados`}
-            value={formatCurrency(valorAbastecimento30Dias)}
-          />
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-[1fr_1.25fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Situação da frota</CardTitle>
-              <CardDescription>
-                Distribuição dos veículos cadastrados por status operacional.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <FleetStatusRow
-                count={activeVehicles}
-                status="active"
-                total={totalVeiculos}
-              />
-              <FleetStatusRow
-                count={maintenanceVehicles}
-                status="maintenance"
-                total={totalVeiculos}
-              />
-              <FleetStatusRow
-                count={inactiveVehicles}
-                status="inactive"
-                total={totalVeiculos}
-              />
-              <FleetStatusRow
-                count={processingVehicles}
-                status="processing"
-                total={totalVeiculos}
-              />
-              <FleetStatusRow
-                count={consultErrorVehicles}
-                status="consult_error"
-                total={totalVeiculos}
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Débitos críticos</CardTitle>
-              <CardDescription>
-                IPVA, licenciamento e seguro vencidos ou próximos do prazo.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {debitosCriticos.length ? (
-                <div className="space-y-2">
-                  {debitosCriticos.map((vencimento) => (
-                    <VencimentoRow
-                      key={vencimento.id}
-                      vencimento={vencimento}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={CheckCircle2}
-                  text="Nenhum débito crítico para os próximos 30 dias."
-                />
-              )}
-            </CardContent>
-          </Card>
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Manutenções em andamento</CardTitle>
-              <CardDescription>
-                Ordens abertas, responsáveis e veículos atualmente em cuidado.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {manutencoesAbertas.length ? (
-                <div className="space-y-2">
-                  {manutencoesAbertas.map((manutencao) => (
-                    <ManutencaoRow
-                      key={manutencao.id}
-                      manutencao={manutencao}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={CheckCircle2}
-                  text="Nenhuma manutenção em andamento."
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Abastecimento</CardTitle>
-              <CardDescription>
-                Leitura das ordens e dos abastecimentos concluídos recentemente.
-              </CardDescription>
-              <CardAction>
-                <Badge
-                  className="border-sky-200 bg-sky-50 text-sky-700"
-                  variant="outline"
-                >
-                  {abastecimentosRecentes.length} em 30 dias
-                </Badge>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-2 sm:grid-cols-3">
-                <SmallStat label="Pendentes" value={ordensPendentes} />
-                <SmallStat label="Vencidas" value={ordensVencidas} tone="danger" />
-                <SmallStat
-                  label="Concluídas"
-                  value={
-                    abastecimentos.filter(
-                      (abastecimento) => abastecimento.status === "completed"
-                    ).length
-                  }
-                  tone="success"
-                />
-              </div>
-
-              {ultimosAbastecimentos.length ? (
-                <div className="space-y-2">
-                  {ultimosAbastecimentos.map((abastecimento) => (
-                    <AbastecimentoRow
-                      abastecimento={abastecimento}
-                      key={abastecimento.id}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={Fuel}
-                  text="Nenhum abastecimento concluído registrado."
-                />
-              )}
-            </CardContent>
-          </Card>
+        <section aria-label="Operações da frota" className="grid items-start gap-4 xl:grid-cols-2">
+          {access.canViewUsoVeiculo ? <Panel title="Retiradas em aberto" href={href("/frotas/uso-veiculo", "in_use")} total={metrics.openUsages.length}>
+            {metrics.openUsages.length ? metrics.openUsages.slice(0,5).map(usage => <Operation key={usage.id} icon={KeyRound} tone="blue" model={usage.modelo} vehicle={`${usage.marca} · ${usage.placa}`} detail={`${usage.funcionario_nome}${usage.destino ? ` · ${usage.destino}` : ""}`} trailing={dateTime(usage.data_saida)} />) : <Empty text="Nenhum veículo em uso no momento." />}
+          </Panel> : null}
+          {access.canViewManutencao ? <Panel title="Manutenções em andamento" href={href("/frotas/manutencao", "open")} total={metrics.openMaintenance.length}>
+            {metrics.openMaintenance.length ? metrics.openMaintenance.slice(0,5).map(item => <Operation key={item.id} icon={Wrench} tone="amber" model={item.modelo} vehicle={`${item.marca} · ${item.placa}`} detail={`${item.oficina || "Oficina não informada"} · ${item.descricao}`} trailing={formatFrotaDate(item.data_entrada)} />) : <Empty text="Nenhuma manutenção em andamento." />}
+          </Panel> : null}
+          {access.canViewAbastecimento ? <div className="xl:col-span-2"><Panel title="Últimos abastecimentos" href={href("/frotas/abastecimento", "completed")}>
+            {metrics.completedFuel.length ? <div className="divide-y">{metrics.completedFuel.slice(0,4).map(item => <Operation key={item.id} icon={Fuel} tone="blue" model={item.modelo} vehicle={`${item.marca} · ${item.placa}`} detail={`${item.posto_nome || "Posto não informado"} · ${formatFrotaDate(item.data_abastecimento)}`} trailing={currency(item.valor_total ?? 0)} />)}</div> : <Empty text="Nenhum abastecimento concluído registrado." />}
+          </Panel></div> : null}
         </section>
       </main>
     </FrotasShell>
   );
 }
 
-type MetricCardProps = {
-  icon: typeof Car;
-  label: string;
-  note: string;
-  value: string;
-  variant?: "default" | "danger" | "warning";
-};
-
-function MetricCard({
-  icon: Icon,
-  label,
-  note,
-  value,
-  variant = "default",
-}: MetricCardProps) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 py-4">
-        <div
-          className={cn(
-            "flex size-10 items-center justify-center rounded-lg border",
-            variant === "danger"
-              ? "border-red-200 bg-red-50 text-red-700"
-              : variant === "warning"
-                ? "border-amber-200 bg-amber-50 text-amber-700"
-                : "border-sky-200 bg-sky-50 text-sky-700"
-          )}
-        >
-          <Icon className="size-5" />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-xl font-semibold">{value}</div>
-          <div className="truncate text-xs font-medium text-muted-foreground">
-            {label}
-          </div>
-          <div className="truncate text-xs text-muted-foreground">{note}</div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+function Metric({ icon: Icon, label, value, note, tone, href }: { icon: typeof Car; label: string; value: string; note: string; tone: keyof typeof tones; href: string }) {
+  return <Link href={href} className="rounded-xl focus-visible:outline-2 focus-visible:outline-ring"><Card className="h-full transition-colors hover:bg-muted/30"><CardContent className="space-y-3"><div className="flex items-center justify-between gap-2"><span className="text-sm text-muted-foreground">{label}</span><span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", tones[tone])}><Icon className="size-4" /></span></div><div><div className="text-2xl font-semibold tabular-nums tracking-tight">{value}</div><p className="mt-1 text-xs text-muted-foreground">{note}</p></div></CardContent></Card></Link>;
 }
-
-function HeroStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border bg-background/80 px-4 py-3">
-      <div className="text-lg font-semibold">{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-    </div>
-  );
+function AttentionLink({ href, label, count, tone }: { href: string; label: string; count: number; tone: keyof typeof tones }) {
+  return <Link href={href} className={cn("flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm focus-visible:outline-2 focus-visible:outline-ring", count ? tones[tone] : "bg-muted/40 text-muted-foreground")}><span className="text-lg font-semibold tabular-nums">{count}</span><span className="flex-1">{label}</span><ArrowRight className="size-4 shrink-0" /></Link>;
 }
-
-function FleetStatusRow({
-  count,
-  status,
-  total,
-}: {
-  count: number;
-  status: VeiculoStatus;
-  total: number;
-}) {
-  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-  const meta = vehicleStatusMeta[status];
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Badge className={meta.badge} variant="outline">
-            {formatVeiculoStatus(status)}
-          </Badge>
-          <span className="text-sm text-muted-foreground">
-            {count} veículo(s)
-          </span>
-        </div>
-        <span className="text-sm font-medium">{percentage}%</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn(
-            "h-full rounded-full",
-            status === "active"
-              ? "bg-emerald-500"
-              : status === "maintenance"
-                ? "bg-amber-500"
-                : status === "processing"
-                  ? "bg-sky-500"
-                  : status === "consult_error"
-                    ? "bg-red-500"
-                    : "bg-zinc-400"
-          )}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-    </div>
-  );
+function Panel({ title, href, total, children }: { title: string; href: string; total?: number; children: ReactNode }) {
+  return <Card><CardContent className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-medium">{title}</h2><Link href={href} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">Ver todos<ArrowRight className="size-3.5" /></Link></div>{total !== undefined ? <ListMetrics items={[{ label: "Em aberto", value: total, tone: total ? "inUse" : "neutral" }]} /> : null}<div>{children}</div></CardContent></Card>;
 }
-
-function VencimentoRow({ vencimento }: { vencimento: FrotaVencimento }) {
-  const isExpired = vencimento.dias_restantes < 0;
-
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
-      <div className="flex min-w-0 items-center gap-3">
-        <div
-          className={cn(
-            "flex size-9 items-center justify-center rounded-lg border",
-            isExpired
-              ? "border-red-200 bg-red-50 text-red-700"
-              : "border-amber-200 bg-amber-50 text-amber-700"
-          )}
-        >
-          {isExpired ? (
-            <ShieldAlert className="size-4" />
-          ) : (
-            <Clock3 className="size-4" />
-          )}
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium">
-            {vencimento.modelo} · {vencimento.placa}
-          </div>
-          <div className="truncate text-xs text-muted-foreground">
-            {formatVencimentoTipo(vencimento.tipo)} ·{" "}
-            {formatFrotaDate(vencimento.data_vencimento)}
-          </div>
-        </div>
-      </div>
-      <Badge
-        className={
-          isExpired
-            ? "border-red-200 bg-red-50 text-red-700"
-            : "border-amber-200 bg-amber-50 text-amber-700"
-        }
-        variant="outline"
-      >
-        {formatFrotaDaysRemaining(vencimento.dias_restantes)}
-      </Badge>
-    </div>
-  );
+function Operation({ icon: Icon, tone, model, vehicle, detail, trailing }: { icon: typeof Car; tone: keyof typeof tones; model: string; vehicle: string; detail: string; trailing: string }) {
+  return <div className="flex items-start gap-3 border-b py-3 last:border-0"><span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", tones[tone])}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap justify-between gap-x-3 gap-y-1"><span className="text-sm font-medium">{model}</span><span className="text-xs font-medium tabular-nums">{trailing}</span></div><div className="text-xs text-muted-foreground">{vehicle}</div><p className="mt-1 break-words text-xs text-muted-foreground">{detail}</p></div></div>;
 }
-
-function ManutencaoRow({ manutencao }: { manutencao: FrotaManutencao }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex size-9 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
-          <Wrench className="size-4" />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium">
-            {manutencao.modelo} · {manutencao.placa}
-          </div>
-          <div className="truncate text-xs text-muted-foreground">
-            {manutencao.tipo} · {manutencao.responsavel || "Sem responsável"}
-          </div>
-        </div>
-      </div>
-      <div className="text-right">
-        <Badge className="border-amber-200 bg-amber-50 text-amber-700" variant="outline">
-          {formatManutencaoStatus(manutencao.status)}
-        </Badge>
-        <div className="mt-1 text-xs text-muted-foreground">
-          {formatFrotaDate(manutencao.data_entrada)}
-        </div>
-      </div>
-    </div>
-  );
+function Empty({ text }: { text: string }) {
+  return <div className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-4 text-sm text-muted-foreground"><CheckCircle2 className="size-4 shrink-0" />{text}</div>;
 }
-
-function AbastecimentoRow({
-  abastecimento,
-}: {
-  abastecimento: FrotaAbastecimento;
-}) {
-  const meta = abastecimentoStatusMeta[abastecimento.status];
-
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex size-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700">
-          <Fuel className="size-4" />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium">
-            {abastecimento.numero_ordem} · {abastecimento.placa}
-          </div>
-          <div className="truncate text-xs text-muted-foreground">
-            {abastecimento.posto_nome || "Posto não informado"} ·{" "}
-            {formatFrotaDate(abastecimento.data_abastecimento)}
-          </div>
-        </div>
-      </div>
-      <div className="text-right">
-        <div className="text-sm font-semibold">
-          {formatCurrency(getAbastecimentoTotal(abastecimento))}
-        </div>
-        <Badge className={meta.badge} variant="outline">
-          {formatAbastecimentoStatus(abastecimento.status)}
-        </Badge>
-      </div>
-    </div>
-  );
-}
-
-function SmallStat({
-  label,
-  tone = "default",
-  value,
-}: {
-  label: string;
-  tone?: "danger" | "default" | "success";
-  value: number;
-}) {
-  return (
-    <div className="rounded-lg border bg-muted/30 px-3 py-2">
-      <div
-        className={cn(
-          "text-lg font-semibold",
-          tone === "danger"
-            ? "text-red-700"
-            : tone === "success"
-              ? "text-emerald-700"
-              : "text-foreground"
-        )}
-      >
-        {value}
-      </div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-    </div>
-  );
-}
-
-function EmptyState({
-  icon: Icon,
-  text,
-}: {
-  icon: typeof AlertTriangle;
-  text: string;
-}) {
-  return (
-    <div className="flex min-h-24 items-center justify-center rounded-lg border border-dashed bg-muted/20 px-4 text-center text-sm text-muted-foreground">
-      <div>
-        <Icon className="mx-auto mb-2 size-5" />
-        {text}
-      </div>
-    </div>
-  );
-}
-
-function getAbastecimentoTotal(abastecimento: FrotaAbastecimento) {
-  return (abastecimento.valor_total ?? 0) + (abastecimento.arla_valor_total ?? 0);
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    currency: "BRL",
-    maximumFractionDigits: 2,
-    style: "currency",
-  }).format(value);
-}
-
-function formatDecimal(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    maximumFractionDigits: 1,
-    minimumFractionDigits: 0,
-  }).format(value);
-}
-
-function formatPrefeituraName(name: string) {
-  return name
-    .replace(/^prefeitura\s+municipal\s+de\s+/i, "Município de ")
-    .replace(/^prefeitura\s+municipal\s+da\s+/i, "Município da ")
-    .replace(/^prefeitura\s+municipal\s+do\s+/i, "Município do ")
-    .replace(/^prefeitura\s+de\s+/i, "Município de ");
-}
+function currency(value: number) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value); }
+function dateTime(value: string) { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value)); }

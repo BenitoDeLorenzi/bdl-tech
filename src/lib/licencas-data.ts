@@ -80,7 +80,7 @@ export async function getLicencas(params?: { query?: string; status?: string }) 
   let query = supabase
     .from("licencas")
     .select(
-      "id,prefeitura_id,modulo_id,status,inicio,fim,valor_anual,created_at,prefeituras(nome,cnpj),modulos(nome,subdominio)"
+      "id,prefeitura_id,modulo_id,status,inicio,fim,valor_anual,created_at,prefeituras:empresas(nome,cnpj),modulos(nome,subdominio)"
     )
     .order("created_at", { ascending: false });
 
@@ -201,7 +201,7 @@ export async function getLicencaFormOptions() {
   const supabase = createSupabaseServerClient();
   const [prefeiturasResult, modulosResult] = await Promise.all([
     supabase
-      .from("prefeituras")
+      .from("empresas")
       .select("id,nome,cnpj")
       .eq("status", "active")
       .order("nome"),

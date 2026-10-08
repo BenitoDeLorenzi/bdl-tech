@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Building2, Car, LayoutDashboard, ShieldCheck } from "lucide-react";
+import { Building2, Car, LayoutDashboard, Store } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 
 import { HeaderUserMenu } from "@/components/sidebar-user-menu";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,12 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function PortalPage() {
+export default async function PortalPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ perfil?: string }>;
+}) {
+  const query = await searchParams;
   const profile = await requireUserProfile();
   const modules = await getPortalModules(profile);
 
@@ -27,10 +33,10 @@ export default async function PortalPage() {
         <div className="mx-auto grid h-16 max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <ShieldCheck className="size-4" />
+              <BrandMark className="size-9" />
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold">BDL Tech</div>
+              <div className="text-sm font-semibold">Vibe Tech</div>
               <div className="truncate text-xs text-muted-foreground">
                 Portal de módulos
               </div>
@@ -43,7 +49,7 @@ export default async function PortalPage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={profile.prefeitura_brasao_url}
-                  alt={`Brasão de ${profile.prefeitura_nome ?? "prefeitura"}`}
+                  alt={`Logotipo de ${profile.prefeitura_nome ?? "empresa"}`}
                   className="size-full object-contain p-1"
                 />
               ) : (
@@ -52,18 +58,21 @@ export default async function PortalPage() {
             </div>
             <div className="hidden min-w-0 text-center sm:block">
               <div className="max-w-[320px] truncate text-sm font-semibold">
-                {profile.prefeitura_nome ?? "Equipe BDL Tech"}
+                {profile.prefeitura_nome ?? "Equipe Vibe Tech"}
               </div>
               <div className="truncate text-xs text-muted-foreground">
                 {profile.prefeitura_nome
-                  ? "Portal da prefeitura"
+                  ? "Portal da empresa"
                   : "Portal administrativo"}
               </div>
             </div>
           </div>
 
           <div className="flex min-w-0 justify-end">
-            <HeaderUserMenu profile={profile} />
+            <HeaderUserMenu
+              profile={profile}
+              defaultProfileOpen={query.perfil === "1"}
+            />
           </div>
         </div>
       </header>
@@ -110,7 +119,12 @@ export default async function PortalPage() {
 }
 
 function ModuleCard({ module }: { module: PortalModulo }) {
-  const Icon = module.slug === "bdl-admin" ? LayoutDashboard : Car;
+  const Icon =
+    module.slug === "bdl-admin"
+      ? LayoutDashboard
+      : module.slug === "gestao-estabelecimentos"
+        ? Store
+        : Car;
   const disabled = module.href === "#";
 
   return (
@@ -120,7 +134,9 @@ function ModuleCard({ module }: { module: PortalModulo }) {
           <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
             <Icon className="size-5 text-muted-foreground" />
           </div>
-          <Badge variant={disabled ? "secondary" : "outline"}>{module.tag}</Badge>
+          <Badge variant={disabled ? "secondary" : "outline"}>
+            {module.tag}
+          </Badge>
         </div>
         <CardTitle className="text-lg">{module.label}</CardTitle>
         <CardDescription>{module.description}</CardDescription>

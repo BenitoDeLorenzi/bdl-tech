@@ -55,13 +55,13 @@ export function VehicleRealtimeSync({
         supabase.realtime.setAuth(accessToken);
 
         if (debug) {
-          console.info("[BDL Realtime] autenticado", {
+          console.info("[Vibe Tech Realtime] autenticado", {
             origem: session ? "browser" : "server",
             userId,
           });
         }
       } else if (debug) {
-        console.warn("[BDL Realtime] sessão ausente no navegador");
+        console.warn("[Vibe Tech Realtime] sessão ausente no navegador");
       }
 
       channel = supabase
@@ -73,7 +73,7 @@ export function VehicleRealtimeSync({
           },
           ({ payload }) => {
             if (debug) {
-              console.info("[BDL Realtime] broadcast vehicle_changed", payload);
+              console.info("[Vibe Tech Realtime] broadcast vehicle_changed", payload);
             }
 
             if (shouldRefresh(payload as Record<string, unknown>)) {
@@ -90,7 +90,7 @@ export function VehicleRealtimeSync({
           },
           (payload) => {
             if (debug) {
-              console.info("[BDL Realtime] frota_veiculos", payload);
+              console.info("[Vibe Tech Realtime] frota_veiculos", payload);
             }
 
             if (shouldRefresh(payload.new as Record<string, unknown>)) {
@@ -107,7 +107,7 @@ export function VehicleRealtimeSync({
           },
           (payload) => {
             if (debug) {
-              console.info("[BDL Realtime] frota_debito_consultas", payload);
+              console.info("[Vibe Tech Realtime] frota_debito_consultas", payload);
             }
 
             if (shouldRefresh(payload.new as Record<string, unknown>)) {
@@ -121,11 +121,11 @@ export function VehicleRealtimeSync({
           }
 
           if (error) {
-            console.error("[BDL Realtime] erro na assinatura", status, error);
+            console.error("[Vibe Tech Realtime] erro na assinatura", status, error);
             return;
           }
 
-          console.info("[BDL Realtime] status da assinatura", status);
+          console.info("[Vibe Tech Realtime] status da assinatura", status);
         });
     }
 
@@ -151,7 +151,7 @@ async function getServerRealtimeSession(debug: boolean) {
 
     if (!response.ok) {
       if (debug) {
-        console.warn("[BDL Realtime] token do servidor indisponível", {
+        console.warn("[Vibe Tech Realtime] token do servidor indisponível", {
           status: response.status,
         });
       }
@@ -165,7 +165,7 @@ async function getServerRealtimeSession(debug: boolean) {
     };
   } catch (error) {
     if (debug) {
-      console.warn("[BDL Realtime] erro ao buscar token do servidor", error);
+      console.warn("[Vibe Tech Realtime] erro ao buscar token do servidor", error);
     }
 
     return null;

@@ -1,16 +1,18 @@
+import { CancellationDetails } from "@/components/cancellation-details";
+import { CancelFrotaDialog } from "@/components/cancel-frota-dialog";
+import { ListStatusActionButton } from "@/components/list-status-action-button";
+import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   Ban,
   CalendarClock,
-  CheckCircle2,
   CircleAlert,
   CircleCheck,
   Eye,
   KeyRound,
   MapPin,
   Plus,
-  RotateCcw,
   Search,
   UserRound,
   X,
@@ -21,7 +23,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -34,7 +35,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { HeaderSeparator } from "@/components/header-separator";
 import {
   Table,
   TableBody,
@@ -61,6 +62,7 @@ import {
 import { FrotasShell } from "../frotas-shell";
 import { cancelUsoVeiculo } from "./actions";
 import { DevolucaoForm } from "./devolucao-form";
+import { DeleteUsoButton } from "./delete-uso-button";
 import { UsoVeiculoForm } from "./uso-veiculo-form";
 
 export const dynamic = "force-dynamic";
@@ -156,16 +158,15 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
                 </div>
                 <div>
                   <CardTitle>Controle de retirada</CardTitle>
-                  <CardDescription>
-                    Acompanhe quem retirou, quando saiu e quando devolveu cada veículo.
-                  </CardDescription>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <MetricBadge label="Em uso" value={data.metricas.emUso} />
-                <MetricBadge label="Devolvidos" value={data.metricas.devolvidos} />
-                <MetricBadge label="Total" value={data.metricas.total} />
-              </div>
+              <ListMetrics
+                items={[
+                  { label: "Em uso", value: data.metricas.emUso, tone: "inUse" },
+                  { label: "Devolvidos", value: data.metricas.devolvidos, tone: "success" },
+                  { label: "Total", value: data.metricas.total },
+                ]}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -175,7 +176,7 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead>Veículo</TableHead>
-                      <TableHead>Funcionário</TableHead>
+                      <TableHead>Motorista</TableHead>
                       <TableHead>Saída</TableHead>
                       <TableHead>Retorno</TableHead>
                       <TableHead>Quilometragem</TableHead>
@@ -189,12 +190,12 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
                     {data.usos.map((uso) => (
                       <TableRow key={uso.id}>
                         <TableCell>
-                          <div className="min-w-[190px]">
+                          <div className="min-w-[180px]">
                             <div className="font-medium">
-                              {uso.modelo} · {uso.placa}
+                              {uso.modelo}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              {uso.marca} · {uso.secretaria}
+                              {uso.marca} · {uso.placa}
                             </div>
                           </div>
                         </TableCell>
@@ -237,7 +238,7 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
                           <UsoStatusBadge status={uso.status} />
                         </TableCell>
                         <TableCell>
-                          <UsoVeiculoActions access={access} uso={uso} />
+                          <UsoVeiculoActions access={access} uso={uso} canDelete={profile.role === "bdl_admin"} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -247,7 +248,7 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
             ) : (
               <EmptyUsoState
                 canCreate={access.canCreateUsoVeiculo}
-                veiculos={data.veiculos}
+                veiculos={data.veiculos} motoristas={data.motoristas}
               />
             )}
           </CardContent>
@@ -338,7 +339,7 @@ function UsoVeiculoToolbar({
         })}
       </div>
 
-      <Separator orientation="vertical" className="hidden h-5 xl:block" />
+      {access.canCreateUsoVeiculo ? <HeaderSeparator className="hidden xl:block" /> : null}
 
       {access.canCreateUsoVeiculo ? (
         <Dialog>
@@ -354,7 +355,7 @@ function UsoVeiculoToolbar({
             <DialogHeader>
               <DialogTitle>Nova retirada</DialogTitle>
             </DialogHeader>
-            <UsoVeiculoForm veiculos={data.veiculos} />
+            <UsoVeiculoForm veiculos={data.veiculos} motoristas={data.motoristas} />
           </DialogContent>
         </Dialog>
       ) : null}
@@ -365,7 +366,9 @@ function UsoVeiculoToolbar({
 function UsoVeiculoActions({
   access,
   uso,
+  canDelete,
 }: {
+  canDelete: boolean;
   access: Awaited<ReturnType<typeof getFrotasPermissionAccess>>;
   uso: FrotaUsoVeiculo;
 }) {
@@ -404,15 +407,7 @@ function UsoVeiculoActions({
           <Tooltip>
             <TooltipTrigger
               render={
-                <DialogTrigger
-                  className={buttonVariants({
-                    variant: "ghost",
-                    size: "icon-sm",
-                  })}
-                  aria-label="Registrar devolução"
-                >
-                  <RotateCcw className="size-4" />
-                </DialogTrigger>
+                <DialogTrigger render={<ListStatusActionButton action="complete" aria-label="Registrar devolução" />} />
               }
             />
             <TooltipContent>Registrar devolução</TooltipContent>
@@ -430,27 +425,9 @@ function UsoVeiculoActions({
       ) : null}
 
       {uso.status === "in_use" && access.canCancelUsoVeiculo ? (
-        <form action={cancelUsoVeiculo}>
-          <input type="hidden" name="id" value={uso.id} />
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="submit"
-                  aria-label="Cancelar retirada"
-                  className={buttonVariants({
-                    variant: "ghost",
-                    size: "icon-sm",
-                  })}
-                >
-                  <Ban className="size-4" />
-                </button>
-              }
-            />
-            <TooltipContent>Cancelar retirada</TooltipContent>
-          </Tooltip>
-        </form>
+        <CancelFrotaDialog id={uso.id} label="Cancelar retirada" action={cancelUsoVeiculo} />
       ) : null}
+      {canDelete && uso.status === "cancelled" ? <DeleteUsoButton id={uso.id} placa={uso.placa} motorista={uso.funcionario_nome} /> : null}
     </div>
   );
 }
@@ -471,7 +448,7 @@ function UsoDetails({ uso }: { uso: FrotaUsoVeiculo }) {
               <UsoStatusBadge status={uso.status} />
             </div>
             <div className="text-xs text-muted-foreground">
-              {uso.marca} · {uso.secretaria}
+              {uso.marca}
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:min-w-72">
@@ -492,7 +469,7 @@ function UsoDetails({ uso }: { uso: FrotaUsoVeiculo }) {
         <div className="rounded-lg border p-2.5">
           <div className="flex items-center gap-2 text-xs font-medium">
             <UserRound className="size-3.5 text-muted-foreground" />
-            Funcionário
+            Motorista
           </div>
           <div className="mt-2 grid gap-1.5">
             <CompactDetail label="Nome" value={uso.funcionario_nome} />
@@ -517,7 +494,7 @@ function UsoDetails({ uso }: { uso: FrotaUsoVeiculo }) {
               value={formatUsoDateTime(uso.data_retorno)}
             />
             <CompactDetail
-              label="Prefeitura"
+              label="Empresa"
               value={uso.prefeitura_nome}
             />
             <CompactDetail
@@ -527,6 +504,8 @@ function UsoDetails({ uso }: { uso: FrotaUsoVeiculo }) {
           </div>
         </div>
       </div>
+
+      {uso.status === "cancelled" ? <CancellationDetails date={uso.cancelled_at} reason={uso.motivo_cancelamento} /> : null}
 
       {uso.observacoes_saida || uso.observacoes_retorno ? (
         <div className="grid gap-2 sm:grid-cols-2">
@@ -547,8 +526,10 @@ function UsoDetails({ uso }: { uso: FrotaUsoVeiculo }) {
 function EmptyUsoState({
   canCreate,
   veiculos,
+  motoristas,
 }: {
   canCreate: boolean;
+  motoristas: Awaited<ReturnType<typeof getUsoVeiculosData>>["motoristas"];
   veiculos: Awaited<ReturnType<typeof getUsoVeiculosData>>["veiculos"];
 }) {
   return (
@@ -577,7 +558,7 @@ function EmptyUsoState({
             <DialogHeader>
               <DialogTitle>Nova retirada</DialogTitle>
             </DialogHeader>
-            <UsoVeiculoForm veiculos={veiculos} />
+            <UsoVeiculoForm veiculos={veiculos} motoristas={motoristas} />
           </DialogContent>
         </Dialog>
       ) : null}
@@ -603,16 +584,6 @@ function UsoStatusBadge({ status }: { status: UsoVeiculoStatus }) {
     <Badge variant="outline" className={className[status]}>
       <Icon className="size-3.5" />
       {formatUsoVeiculoStatus(status)}
-    </Badge>
-  );
-}
-
-function MetricBadge({ label, value }: { label: string; value: number }) {
-  return (
-    <Badge variant="outline" className="h-8 gap-1.5 rounded-lg px-3">
-      <CheckCircle2 className="size-3.5 text-muted-foreground" />
-      <span className="font-semibold">{value}</span>
-      <span className="text-muted-foreground">{label}</span>
     </Badge>
   );
 }

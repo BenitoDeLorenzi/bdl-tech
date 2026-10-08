@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import { requireUserProfile } from "@/lib/auth-data";
 import { hasFrotasPermission } from "@/lib/frotas-permissions";
@@ -11,6 +10,34 @@ export type UsoVeiculoActionState = {
   error?: string;
   success?: string;
 };
+
+export async function deleteUsoVeiculo(
+  _previousState: UsoVeiculoActionState,
+  formData: FormData
+): Promise<UsoVeiculoActionState> {
+  const profile = await requireUserProfile();
+  if (profile.role !== "bdl_admin" || !(await hasFrotasPermission(profile, "vehicle_usage.cancel"))) {
+    return { error: "Somente o Master pode excluir retiradas." };
+  }
+  const id = getRequiredValue(formData, "id");
+  if (!id) return { error: "Informe a retirada que deseja excluir." };
+
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("frota_uso_veiculos")
+    .delete()
+    .eq("id", id)
+    .eq("status", "cancelled")
+    .select("id,veiculo_id")
+    .maybeSingle();
+
+  if (error) return { error: "Não foi possível excluir a retirada. Tente novamente." };
+  if (!data) return { error: "Retirada não encontrada ou não cancelada. Somente retiradas canceladas podem ser excluídas." };
+
+  revalidateUsoVeiculoPaths();
+  revalidatePath(`/frotas/veiculos/${data.veiculo_id}`);
+  return { success: "Retirada excluída com sucesso." };
+}
 
 export async function createUsoVeiculo(
   _previousState: UsoVeiculoActionState,
@@ -32,7 +59,7 @@ export async function createUsoVeiculo(
   const observacoesSaida = getOptionalValue(formData, "observacoes_saida");
 
   if (!veiculoId || !funcionarioNome || kmSaida === null) {
-    return { error: "Informe o veículo, o funcionário e a quilometragem." };
+    return { error: "Informe o veículo, o motorista e a quilometragem." };
   }
 
   if (funcionarioCpf && funcionarioCpf.length !== 11) {
@@ -55,7 +82,7 @@ export async function createUsoVeiculo(
   }
 
   if (profile.role !== "bdl_admin" && veiculo.prefeitura_id !== profile.prefeitura_id) {
-    return { error: "Este veículo não pertence à sua prefeitura." };
+    return { error: "Este veículo não pertence à sua empresa." };
   }
 
   if (veiculo.status === "inactive") {
@@ -118,7 +145,22 @@ export async function createUsoVeiculo(
     return { error: formatUsoVeiculoError(error.message) };
   }
 
+  const { error: mileageError } = await supabase
+    .from("frota_veiculos")
+    .update({ quilometragem: kmSaida })
+    .eq("id", veiculo.id)
+    .eq("prefeitura_id", veiculo.prefeitura_id)
+    .or(`quilometragem.is.null,quilometragem.lt.${kmSaida}`);
+
   revalidateUsoVeiculoPaths();
+  revalidatePath(`/frotas/veiculos/${veiculo.id}`);
+
+  if (mileageError) {
+    return {
+      error: "A retirada foi registrada, mas não foi possível atualizar a quilometragem do veículo. Atualize-a no cadastro do veículo; não registre outra retirada.",
+    };
+  }
+
   return { success: "Retirada registrada com sucesso." };
 }
 
@@ -155,7 +197,7 @@ export async function returnUsoVeiculo(
   }
 
   if (profile.role !== "bdl_admin" && uso.prefeitura_id !== profile.prefeitura_id) {
-    return { error: "Esta retirada não pertence à sua prefeitura." };
+    return { error: "Esta retirada não pertence à sua empresa." };
   }
 
   if (uso.status !== "in_use") {
@@ -197,68 +239,27 @@ export async function returnUsoVeiculo(
   return { success: "Devolução registrada com sucesso." };
 }
 
-export async function cancelUsoVeiculo(formData: FormData) {
+export async function cancelUsoVeiculo(_previousState: UsoVeiculoActionState, formData: FormData): Promise<UsoVeiculoActionState> {
   const profile = await requireUserProfile();
   const allowed = await hasFrotasPermission(profile, "vehicle_usage.cancel");
-
-  if (!allowed) {
-    redirect(
-      `/frotas/uso-veiculo?error=${encodeURIComponent(
-        "Você não tem permissão para cancelar retirada."
-      )}`
-    );
-  }
-
+  if (!allowed) return { error: "Você não tem permissão para cancelar este registro." };
   const id = getRequiredValue(formData, "id");
+  const motivo = getRequiredValue(formData, "motivo_cancelamento");
+  if (!id || motivo.length < 8) return { error: "Descreva o motivo com pelo menos 8 caracteres." };
   const supabase = createSupabaseServerClient();
-  const { data: uso, error: usoError } = await supabase
-    .from("frota_uso_veiculos")
-    .select("id,prefeitura_id,status")
-    .eq("id", id)
-    .single();
-
-  if (usoError || !uso) {
-    redirect(
-      `/frotas/uso-veiculo?error=${encodeURIComponent(
-        formatUsoVeiculoError(usoError?.message ?? "Retirada não encontrada.")
-      )}`
-    );
-  }
-
-  if (profile.role !== "bdl_admin" && uso.prefeitura_id !== profile.prefeitura_id) {
-    redirect(
-      `/frotas/uso-veiculo?error=${encodeURIComponent(
-        "Esta retirada não pertence à sua prefeitura."
-      )}`
-    );
-  }
-
-  if (uso.status !== "in_use") {
-    redirect(
-      `/frotas/uso-veiculo?error=${encodeURIComponent(
-        "Somente retiradas abertas podem ser canceladas."
-      )}`
-    );
-  }
-
-  const { error } = await supabase
-    .from("frota_uso_veiculos")
-    .update({
-      status: "cancelled",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", uso.id);
-
-  if (error) {
-    redirect(
-      `/frotas/uso-veiculo?error=${encodeURIComponent(
-        formatUsoVeiculoError(error.message)
-      )}`
-    );
-  }
-
+  const { data: registro, error: readError } = await supabase.from("frota_uso_veiculos")
+    .select("id,prefeitura_id,status,veiculo_id").eq("id", id).single();
+  if (readError || !registro) return { error: "Registro não encontrado." };
+  if (profile.role !== "bdl_admin" && registro.prefeitura_id !== profile.prefeitura_id)
+    return { error: "Este registro não pertence à sua empresa." };
+  if (registro.status !== "in_use") return { error: "Somente registros abertos podem ser cancelados." };
+  const now = new Date().toISOString();
+  const { data: cancelled, error } = await supabase.from("frota_uso_veiculos")
+    .update({ status: "cancelled", motivo_cancelamento: motivo, cancelled_at: now, updated_at: now })
+    .eq("id", id).eq("prefeitura_id", registro.prefeitura_id).eq("status", "in_use").select("id").maybeSingle();
+  if (error || !cancelled) return { error: "Não foi possível cancelar. Atualize a lista e tente novamente." };
   revalidateUsoVeiculoPaths();
-  redirect("/frotas/uso-veiculo?cancelled=1");
+  return { success: "Cancelamento registrado com sucesso." };
 }
 
 async function findOrCreateMotorista(
@@ -381,4 +382,5 @@ function revalidateUsoVeiculoPaths() {
   revalidatePath("/frotas");
   revalidatePath("/frotas/veiculos");
   revalidatePath("/frotas/uso-veiculo");
+  revalidatePath("/frotas/motoristas");
 }

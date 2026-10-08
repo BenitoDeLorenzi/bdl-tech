@@ -73,11 +73,11 @@ export function AbastecimentoPrintOrder({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={abastecimento.prefeitura_brasao_url}
-              alt={`Brasão de ${abastecimento.prefeitura_nome}`}
+              alt={`Logo de ${abastecimento.prefeitura_nome}`}
               className="mx-auto mb-2 h-12 w-12 object-contain"
             />
           ) : null}
-          <div className="text-[15px] font-bold">FROTAS PÚBLICAS</div>
+          <div className="text-[15px] font-bold">VIBE FROTAS</div>
           <div className="mt-1 text-[11px]">{abastecimento.prefeitura_nome}</div>
           <div className="mt-2 border-y border-dashed border-black py-2 text-[13px] font-bold">
             ORDEM DE ABASTECIMENTO
@@ -113,7 +113,6 @@ export function AbastecimentoPrintOrder({
         </div>
 
         <div className="mt-3 space-y-1">
-          <ReceiptLine label="Secretaria" value={abastecimento.secretaria} />
           <ReceiptLine label="Motorista" value={abastecimento.motorista} />
           <ReceiptLine label="Posto" value={abastecimento.posto_nome ?? "-"} />
           <ReceiptLine label="Combustível" value={abastecimento.combustivel} />

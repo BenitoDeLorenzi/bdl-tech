@@ -1,3 +1,4 @@
+import { getEmpresaLicensedModules } from "@/lib/empresa-access";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type UsuarioRole = "bdl_admin" | "municipal_admin" | "municipal_user";
@@ -137,8 +138,8 @@ function buildUsuariosQuery(
   includeAccessFields: boolean
 ) {
   const select = includeAccessFields
-    ? "id,nome,email,username,cpf,role,prefeitura_id,ativo,created_at,prefeituras(nome)"
-    : "id,nome,role,prefeitura_id,created_at,prefeituras(nome)";
+    ? "id,nome,email,username,cpf,role,prefeitura_id,ativo,created_at,prefeituras:empresas!perfis_prefeitura_id_fkey(nome)"
+    : "id,nome,role,prefeitura_id,created_at,prefeituras:empresas!perfis_prefeitura_id_fkey(nome)";
   let query = supabase.from("perfis").select(select).order("created_at", {
     ascending: false,
   });
@@ -180,7 +181,7 @@ function mapUsuariosRows(rows: UsuarioRow[]) {
 export async function getUsuarioFormOptions() {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
-    .from("prefeituras")
+    .from("empresas")
     .select("id,nome")
     .eq("status", "active")
     .order("nome");
@@ -251,7 +252,8 @@ export async function getUsuarioAccessOptions(usuario: Usuario) {
     throw new Error(usuarioPermissoesResult.error.message);
   }
 
-  const licencas = (licencasResult.data ?? []) as unknown as LicencaModuloRow[];
+  const licensedIds = new Set((await getEmpresaLicensedModules(usuario.prefeitura_id)).map(m=>m.id));
+  const licencas = ((licencasResult.data ?? []) as unknown as LicencaModuloRow[]).filter(l=>licensedIds.has(l.modulo_id));
   const moduloIds = licencas
     .map((licenca) => licenca.modulo_id)
     .filter((id): id is string => Boolean(id));
@@ -310,6 +312,7 @@ export async function getUsuarioAccessOptions(usuario: Usuario) {
 function getAllowedPermissionKeys(role: UsuarioRole) {
   if (role === "municipal_admin" || role === "municipal_user") {
     return new Set([
+      "gestao.manage",
       "vehicles.create",
       "vehicles.update",
       "vehicles.delete",
@@ -331,8 +334,9 @@ function getAllowedPermissionKeys(role: UsuarioRole) {
       "fuel_stations.read",
       "drivers.manage",
       "drivers.read",
-      "departments.manage",
-      "departments.read",
+      "workshops.read",
+      "workshops.manage",
+
       "reports.read",
       "vehicle_usage.read",
       "vehicle_usage.create",
@@ -346,9 +350,9 @@ function getAllowedPermissionKeys(role: UsuarioRole) {
 
 export function formatUsuarioRole(role: UsuarioRole) {
   const labels: Record<UsuarioRole, string> = {
-    bdl_admin: "Administrador",
-    municipal_admin: "Administrador Municipal",
-    municipal_user: "Usuário municipal",
+    bdl_admin: "Master",
+    municipal_admin: "Administrador",
+    municipal_user: "Usuário",
   };
 
   return labels[role];

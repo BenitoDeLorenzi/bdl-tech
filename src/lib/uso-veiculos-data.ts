@@ -5,9 +5,13 @@ import {
 } from "@/lib/frotas-data";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
+export type MotoristaOption = { id: string; nome: string; cpf: string | null };
+
 export type UsoVeiculoStatus = "in_use" | "returned" | "cancelled";
 
 export type FrotaUsoVeiculo = {
+  cancelled_at: string | null;
+  motivo_cancelamento: string | null;
   created_at: string;
   data_retorno: string | null;
   data_saida: string;
@@ -26,20 +30,18 @@ export type FrotaUsoVeiculo = {
   placa: string;
   prefeitura_id: string;
   prefeitura_nome: string;
-  secretaria: string;
   status: UsoVeiculoStatus;
   veiculo_id: string;
 };
 
 type UsoVeiculoRow = Omit<
   FrotaUsoVeiculo,
-  "marca" | "modelo" | "placa" | "prefeitura_nome" | "secretaria"
+  "marca" | "modelo" | "placa" | "prefeitura_nome"
 > & {
   frota_veiculos: {
     marca: string;
     modelo: string;
     placa: string;
-    secretaria: string;
   } | null;
   prefeituras: {
     nome: string;
@@ -61,13 +63,16 @@ export async function getUsoVeiculosData(params?: {
   let usosQuery = supabase
     .from("frota_uso_veiculos")
     .select(
-      "id,prefeitura_id,veiculo_id,motorista_id,funcionario_nome,funcionario_cpf,data_saida,km_saida,destino,finalidade,observacoes_saida,data_retorno,km_retorno,observacoes_retorno,status,created_at,frota_veiculos(marca,modelo,placa,secretaria),prefeituras(nome)"
+      "id,prefeitura_id,veiculo_id,motorista_id,funcionario_nome,funcionario_cpf,data_saida,km_saida,destino,finalidade,observacoes_saida,data_retorno,km_retorno,observacoes_retorno,status,cancelled_at,motivo_cancelamento,created_at,frota_veiculos(marca,modelo,placa),prefeituras:empresas(nome)",
     )
     .order("data_saida", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (selectedPrefeituraId) {
-    usosQuery = usosQuery.eq("prefeitura_id", selectedPrefeituraId);
+  {
+    usosQuery = usosQuery.eq(
+      "prefeitura_id",
+      selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000",
+    );
   }
 
   if (params?.status && params.status !== "all") {
@@ -81,12 +86,20 @@ export async function getUsoVeiculosData(params?: {
       return emptyUsoVeiculosData(
         frotasData.prefeituras,
         selectedPrefeituraId,
-        frotasData.veiculos
+        frotasData.veiculos,
       );
     }
 
     throw new Error(error.message);
   }
+
+  const { data: motoristas, error: motoristasError } = await supabase
+    .from("frota_motoristas")
+    .select("id,nome,cpf")
+    .eq("prefeitura_id", selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000")
+    .eq("status", "active")
+    .order("nome");
+  if (motoristasError) throw new Error(motoristasError.message);
 
   let usos = ((data ?? []) as unknown as UsoVeiculoRow[]).map((uso) => ({
     ...uso,
@@ -94,7 +107,6 @@ export async function getUsoVeiculosData(params?: {
     modelo: uso.frota_veiculos?.modelo ?? "-",
     placa: uso.frota_veiculos?.placa ?? "-",
     prefeitura_nome: uso.prefeituras?.nome ?? "-",
-    secretaria: uso.frota_veiculos?.secretaria ?? "-",
   }));
 
   if (params?.query) {
@@ -105,7 +117,7 @@ export async function getUsoVeiculosData(params?: {
           uso.placa,
           uso.modelo,
           uso.marca,
-          uso.secretaria,
+
           uso.funcionario_nome,
           uso.funcionario_cpf,
           formatCpf(uso.funcionario_cpf),
@@ -113,12 +125,13 @@ export async function getUsoVeiculosData(params?: {
           uso.finalidade,
         ]
           .filter(Boolean)
-          .join(" ")
-      ).includes(normalizedQuery)
+          .join(" "),
+      ).includes(normalizedQuery),
     );
   }
 
   return {
+    motoristas: (motoristas ?? []) as MotoristaOption[],
     metricas: {
       cancelados: usos.filter((uso) => uso.status === "cancelled").length,
       devolvidos: usos.filter((uso) => uso.status === "returned").length,
@@ -166,9 +179,10 @@ export function formatUsoDateTime(value: string | null) {
 function emptyUsoVeiculosData(
   prefeituras: FrotaPrefeituraOption[],
   selectedPrefeituraId: string | undefined,
-  veiculos: FrotaVeiculo[]
+  veiculos: FrotaVeiculo[],
 ) {
   return {
+    motoristas: [] as MotoristaOption[],
     metricas: {
       cancelados: 0,
       devolvidos: 0,

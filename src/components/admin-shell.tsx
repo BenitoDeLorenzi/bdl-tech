@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { type LucideIcon } from "lucide-react";
 
 import { AdminSidebar } from "@/components/admin-sidebar";
-import { Separator } from "@/components/ui/separator";
+import { HeaderSeparator } from "@/components/header-separator";
 import {
   SidebarInset,
   SidebarProvider,
@@ -13,7 +13,7 @@ import type { CurrentUserProfile } from "@/lib/auth-data";
 type AdminShellProps = {
   active:
     | "dashboard"
-    | "prefeituras"
+    | "empresas"
     | "licencas"
     | "usuarios"
     | "modulos"
@@ -40,7 +40,7 @@ export function AdminShell({
       <SidebarInset className="min-h-0 overflow-hidden">
         <header className="flex h-16 shrink-0 items-center gap-3 border-b px-4">
           <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="h-4" />
+          <HeaderSeparator />
           <div className="flex min-w-0 shrink-0 items-center gap-2">
             {Icon ? <Icon className="size-5 text-muted-foreground" /> : null}
             <h1 className="truncate text-xl font-semibold tracking-normal">

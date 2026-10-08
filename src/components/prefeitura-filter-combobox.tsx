@@ -45,7 +45,7 @@ export function PrefeituraFilterCombobox({
         onChange={updatePrefeitura}
         prefeituras={prefeituras}
         disabled={disabled}
-        placeholder="Pesquisar prefeitura"
+        placeholder="Pesquisar empresa"
       />
     </div>
   );

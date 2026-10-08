@@ -16,7 +16,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PrefeituraCombobox } from "@/components/prefeitura-combobox";
+import { EmpresaCombobox } from "@/components/empresa-combobox";
 import {
   Select,
   SelectContent,
@@ -171,18 +171,18 @@ export function LicencaForm({
           <Controller
             control={form.control}
             name="prefeitura_id"
-            rules={{ required: "Selecione a prefeitura." }}
+            rules={{ required: "Selecione a empresa." }}
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="prefeitura_id">Prefeitura</FieldLabel>
-                <PrefeituraCombobox
+                <FieldLabel htmlFor="prefeitura_id">Empresa</FieldLabel>
+                <EmpresaCombobox
                   id="prefeitura_id"
                   value={field.value}
                   onChange={field.onChange}
-                  prefeituras={prefeituras}
+                  empresas={prefeituras}
                   disabled={actionPending}
                   invalid={fieldState.invalid}
-                  placeholder="Pesquisar por prefeitura ou CNPJ"
+                  placeholder="Pesquisar por empresa ou CNPJ"
                 />
                 <FieldError errors={[fieldState.error]} />
               </Field>

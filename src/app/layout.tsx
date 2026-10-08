@@ -15,8 +15,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BDL Tech | Portal Administrativo",
-  description: "Portal da BDL Tech para gestão de prefeituras, módulos e licenças.",
+  applicationName: "Vibe Tech",
+  title: "Vibe Tech | Portal Administrativo",
+  description: "Portal da Vibe Tech para gestão de empresas, módulos e licenças.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

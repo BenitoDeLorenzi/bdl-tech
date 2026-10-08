@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
+const exportsObj={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/frotas-dashboard-metrics.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:exportsObj});
+const now=new Date('2026-10-08T18:00:00Z');
+const vehicles=['free','used','repair','inactive'].map((id)=>({id,status:id==='inactive'?'inactive':'active'}));
+const usages=[{veiculo_id:'used',status:'in_use',data_saida:'2026-10-08T12:00:00Z'},{veiculo_id:'used',status:'in_use',data_saida:'2026-10-08T13:00:00Z'},{veiculo_id:'free',status:'returned',data_saida:'2026-10-07'}];
+const maintenance=Array.from({length:8},()=>({veiculo_id:'repair',status:'open',data_entrada:'2026-10-01'}));
+const fuel=[{status:'completed',completed_at:'2026-10-08T10:00:00Z',valor_total:120,arla_valor_total:20,litros:10,arla_litros:2},{status:'completed',completed_at:'2026-08-01',valor_total:500},{status:'completed',completed_at:'2026-11-01',valor_total:500},{status:'cancelled',valor_total:100},{status:'issued',expires_at:'2026-10-09'},{status:'issued',expires_at:'2026-10-07'}];
+const r=exportsObj.getDashboardMetrics(vehicles,usages,maintenance,fuel,now);
+assert.equal(r.available,1);assert.equal(r.availability,25);assert.equal(r.inUse,1);assert.equal(r.openMaintenance.length,8);assert.equal(r.maintenanceVehicles,1);assert.equal(r.fuelCost,120);assert.equal(r.liters,10);assert.equal(r.pendingFuel,1);assert.equal(r.expiredFuel,1);assert.equal(exportsObj.getDashboardMetrics([],[],[],[],now).availability,0);
+console.log('PASS: availability, unique vehicles, full maintenance count, 30-day costs, ARLA and empty fleet.');

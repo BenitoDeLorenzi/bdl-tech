@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogCancel } from "@/components/form-dialog-cancel";
+
 import { startTransition, useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
@@ -101,10 +103,10 @@ export function MotoristaForm({
             <Controller
               control={form.control}
               name="prefeitura_id"
-              rules={{ required: "Selecione a prefeitura." }}
+              rules={{ required: "Selecione a empresa." }}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="prefeitura_id">Prefeitura</FieldLabel>
+                  <FieldLabel htmlFor="prefeitura_id">Empresa</FieldLabel>
                   <PrefeituraCombobox
                     id="prefeitura_id"
                     value={field.value || null}
@@ -121,6 +123,7 @@ export function MotoristaForm({
             <input type="hidden" {...form.register("prefeitura_id")} />
           )}
 
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
           <TextField
             control={form.control}
             label="Nome"
@@ -141,10 +144,12 @@ export function MotoristaForm({
             }}
             transform={formatCpfInput}
           />
+          </div>
         </FieldGroup>
       </fieldset>
 
       <DialogFooter>
+        <FormDialogCancel disabled={actionPending} />
         <Button type="submit" className="gap-2" disabled={actionPending}>
           {actionPending ? (
             <Loader2 className="size-4 animate-spin" />

@@ -1,3 +1,8 @@
+import { CancellationDetails } from "@/components/cancellation-details";
+import { CancelFrotaDialog } from "@/components/cancel-frota-dialog";
+import { DeleteAbastecimentoButton } from "./delete-abastecimento-button";
+import { ListStatusActionButton } from "@/components/list-status-action-button";
+import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
 import {
   CalendarClock,
@@ -6,14 +11,13 @@ import {
   Droplet,
   Eye,
   Fuel,
-  Gauge,
   Printer,
   Search,
   SquareCheckBig,
   X,
 } from "lucide-react";
 
-import { AbastecimentoCancelForm } from "@/app/frotas/abastecimento-cancel-form";
+import { cancelAbastecimento } from "../actions";
 import { AbastecimentoCompleteForm } from "@/app/frotas/abastecimento-complete-form";
 import { AbastecimentoCreateDialog } from "@/app/frotas/abastecimento-create-dialog";
 import { AbastecimentoPrintOrder } from "@/app/frotas/abastecimento-print-order";
@@ -23,7 +27,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -36,7 +39,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { HeaderSeparator } from "@/components/header-separator";
 import {
   Table,
   TableBody,
@@ -149,14 +152,13 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
                 </div>
                 <div>
                   <CardTitle>Ordens de abastecimento</CardTitle>
-                  <CardDescription>
-                    Emissão, controle e impressão térmica para a frota.
-                  </CardDescription>
                 </div>
               </div>
-              <Badge variant="outline">
-                {data.abastecimentos.length} ordem(ns)
-              </Badge>
+              <ListMetrics
+                items={[
+                  { label: "Total", value: data.abastecimentos.length },
+                ]}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -167,9 +169,11 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
                     <TableRow className="bg-muted/50">
                       <TableHead>Ordem</TableHead>
                       <TableHead>Veículo</TableHead>
-                      <TableHead>Motorista</TableHead>
-                      <TableHead>Posto / Emissão</TableHead>
-                      <TableHead>Dados do posto</TableHead>
+                      <TableHead>Posto</TableHead>
+                      <TableHead>Combustível</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead>Emissão</TableHead>
+                      <TableHead>Validade</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="w-[92px] text-right">
                         Ações
@@ -179,55 +183,18 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
                   <TableBody>
                     {data.abastecimentos.map((abastecimento) => (
                       <TableRow key={abastecimento.id}>
-                        <TableCell>
-                          <div className="font-medium">
-                            {abastecimento.numero_ordem}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatFrotaDate(abastecimento.data_abastecimento)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Válida até{" "}
-                            {abastecimento.expires_at
-                              ? formatDateTime(abastecimento.expires_at)
-                              : "-"}
-                          </div>
-                          {abastecimento.print_count > 0 ? (
-                            <div className="mt-1 text-xs text-amber-700">
-                              Reimpressa {abastecimento.print_count}x
-                            </div>
-                          ) : null}
+                        <TableCell className="font-medium">
+                          {abastecimento.numero_ordem}
                         </TableCell>
                         <TableCell>
                           <div className="min-w-[180px]">
-                            <div className="font-medium">
-                              {abastecimento.modelo}
-                            </div>
+                            <div className="font-medium">{abastecimento.modelo}</div>
                             <div className="text-xs text-muted-foreground">
                               {abastecimento.marca} · {abastecimento.placa}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="min-w-[150px]">
-                            <div className="font-medium">
-                              {abastecimento.motorista}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {abastecimento.secretaria}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="min-w-[170px]">
-                            <div className="font-medium">
-                              {abastecimento.posto_nome ?? "-"}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Emitido por {abastecimento.emitido_por ?? "-"}
-                            </div>
-                          </div>
-                        </TableCell>
+                        <TableCell>{abastecimento.posto_nome ?? "-"}</TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1">
                             <Badge variant="secondary" className="font-normal">
@@ -235,30 +202,18 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
                               {abastecimento.combustivel}
                             </Badge>
                             {abastecimento.arla_incluso ? (
-                              <Badge variant="outline" className="font-normal">
-                                ARLA
-                              </Badge>
+                              <Badge variant="outline" className="font-normal">ARLA</Badge>
                             ) : null}
-                            {abastecimento.status === "completed" ? (
-                              <>
-                                <Badge variant="outline" className="font-normal">
-                                  <Gauge className="size-3.5" />
-                                  {abastecimento.quilometragem
-                                    ? `${formatNumber(abastecimento.quilometragem)} km`
-                                    : "-"}
-                                </Badge>
-                                <Badge variant="outline" className="font-normal">
-                                  {abastecimento.litros
-                                    ? `${formatNumber(abastecimento.litros)} L`
-                                    : "-"}
-                                </Badge>
-                              </>
-                            ) : (
-                              <Badge variant="outline" className="font-normal">
-                                Aguardando posto
-                              </Badge>
-                            )}
                           </div>
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {abastecimento.valor_total != null ? formatCurrency(abastecimento.valor_total) : "-"}
+                        </TableCell>
+                        <TableCell className="tabular-nums">
+                          {formatDateTime(abastecimento.created_at)}
+                        </TableCell>
+                        <TableCell className="tabular-nums">
+                          {abastecimento.expires_at ? formatDateTime(abastecimento.expires_at) : "-"}
                         </TableCell>
                         <TableCell>
                           <AbastecimentoStatusBadge
@@ -268,6 +223,7 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
                         <TableCell>
                           <AbastecimentoActions
                             access={access}
+                            canDelete={profile.role === "bdl_admin"}
                             abastecimento={abastecimento}
                           />
                         </TableCell>
@@ -279,7 +235,7 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
             ) : (
               <EmptyFuelState
                 canCreate={access.canCreateAbastecimento}
-                postos={data.postos}
+                postos={data.postos} motoristas={data.motoristas}
                 veiculos={data.veiculos}
               />
             )}
@@ -371,12 +327,12 @@ function AbastecimentoToolbar({
         })}
       </div>
 
-      <Separator orientation="vertical" className="hidden h-5 xl:block" />
+      {access.canCreateAbastecimento ? <HeaderSeparator className="hidden xl:block" /> : null}
 
       {access.canCreateAbastecimento ? (
         <AbastecimentoCreateDialog
           className="h-9 shrink-0 gap-2"
-          postos={data.postos}
+          postos={data.postos} motoristas={data.motoristas}
           veiculos={data.veiculos}
         />
       ) : null}
@@ -386,9 +342,11 @@ function AbastecimentoToolbar({
 }
 
 function AbastecimentoActions({
+  canDelete,
   access,
   abastecimento,
 }: {
+  canDelete: boolean;
   access: Awaited<ReturnType<typeof getFrotasPermissionAccess>>;
   abastecimento: FrotaAbastecimento;
 }) {
@@ -420,37 +378,6 @@ function AbastecimentoActions({
         </DialogContent>
       </Dialog>
 
-      {abastecimento.status === "issued" && access.canCompleteAbastecimento ? (
-        <Dialog>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <DialogTrigger
-                  className={buttonVariants({
-                    variant: "ghost",
-                    size: "icon-sm",
-                  })}
-                  aria-label="Concluir abastecimento"
-                >
-                  <SquareCheckBig className="size-4" />
-                </DialogTrigger>
-              }
-            />
-            <TooltipContent>Concluir abastecimento</TooltipContent>
-          </Tooltip>
-          <DialogContent className="sm:max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Concluir abastecimento</DialogTitle>
-              <DialogDescription>
-                Preenchimento do posto credenciado para{" "}
-                {abastecimento.numero_ordem}.
-              </DialogDescription>
-            </DialogHeader>
-            <AbastecimentoCompleteForm abastecimento={abastecimento} />
-          </DialogContent>
-        </Dialog>
-      ) : null}
-
       {abastecimento.status === "issued" && access.canManageAbastecimento ? (
         <Dialog>
           <Tooltip>
@@ -481,36 +408,33 @@ function AbastecimentoActions({
         </Dialog>
       ) : null}
 
-      {abastecimento.status === "issued" && access.canCancelAbastecimento ? (
+      {abastecimento.status === "issued" && access.canCompleteAbastecimento ? (
         <Dialog>
           <Tooltip>
             <TooltipTrigger
               render={
-                <DialogTrigger
-                  className={buttonVariants({
-                    variant: "ghost",
-                    size: "icon-sm",
-                    className: "text-destructive hover:text-destructive",
-                  })}
-                  aria-label="Cancelar ordem"
-                >
-                  <CircleX className="size-4" />
-                </DialogTrigger>
+                <DialogTrigger render={<ListStatusActionButton action="complete" aria-label="Concluir abastecimento" />} />
               }
             />
-            <TooltipContent>Cancelar ordem</TooltipContent>
+            <TooltipContent>Concluir abastecimento</TooltipContent>
           </Tooltip>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Cancelar ordem</DialogTitle>
+              <DialogTitle>Concluir abastecimento</DialogTitle>
               <DialogDescription>
-                Informe o motivo para liberar o veículo para uma nova ordem.
+                Preenchimento do posto credenciado para{" "}
+                {abastecimento.numero_ordem}.
               </DialogDescription>
             </DialogHeader>
-            <AbastecimentoCancelForm abastecimento={abastecimento} />
+            <AbastecimentoCompleteForm abastecimento={abastecimento} />
           </DialogContent>
         </Dialog>
       ) : null}
+
+      {abastecimento.status === "issued" && access.canCancelAbastecimento ? (
+        <CancelFrotaDialog id={abastecimento.id} label="Cancelar ordem" action={cancelAbastecimento} />
+      ) : null}
+      {canDelete && abastecimento.status === "cancelled" ? <DeleteAbastecimentoButton id={abastecimento.id} nome={abastecimento.numero_ordem} /> : null}
     </div>
   );
 }
@@ -543,7 +467,7 @@ function AbastecimentoDetails({
                 {abastecimento.modelo} · {abastecimento.placa}
               </div>
               <div className="text-xs text-muted-foreground">
-                {abastecimento.secretaria} · {abastecimento.combustivel}
+                {abastecimento.combustivel}
               </div>
             </div>
           </div>
@@ -735,7 +659,7 @@ function AbastecimentoDetails({
       ) : null}
 
       {abastecimento.observacoes || abastecimento.status === "cancelled" ? (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2">
           {abastecimento.observacoes ? (
             <div className="rounded-lg border p-2.5">
               <div className="text-xs font-medium">Observações</div>
@@ -745,28 +669,7 @@ function AbastecimentoDetails({
             </div>
           ) : null}
 
-          {abastecimento.status === "cancelled" ? (
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-2.5">
-              <div className="flex items-center gap-2 text-xs font-medium text-destructive">
-                <CircleX className="size-3.5" />
-                Cancelamento
-              </div>
-              <div className="mt-2 grid gap-1.5">
-                <CompactDetail
-                  label="Cancelada em"
-                  value={
-                    abastecimento.cancelled_at
-                      ? formatDateTime(abastecimento.cancelled_at)
-                      : "-"
-                  }
-                />
-                <CompactDetail
-                  label="Motivo"
-                  value={abastecimento.motivo_cancelamento ?? "-"}
-                />
-              </div>
-            </div>
-          ) : null}
+          {abastecimento.status === "cancelled" ? <CancellationDetails date={abastecimento.cancelled_at} reason={abastecimento.motivo_cancelamento} /> : null}
         </div>
       ) : null}
     </div>
@@ -774,11 +677,13 @@ function AbastecimentoDetails({
 }
 
 function EmptyFuelState({
+  motoristas,
   canCreate,
   postos,
   veiculos,
 }: {
   canCreate: boolean;
+  motoristas: Awaited<ReturnType<typeof getAbastecimentosData>>["motoristas"];
   postos: Awaited<ReturnType<typeof getAbastecimentosData>>["postos"];
   veiculos: Awaited<ReturnType<typeof getAbastecimentosData>>["veiculos"];
 }) {
@@ -798,7 +703,7 @@ function EmptyFuelState({
         <AbastecimentoCreateDialog
           className="mt-4 gap-2"
           label="Emitir ordem"
-          postos={postos}
+          postos={postos} motoristas={motoristas}
           veiculos={veiculos}
         />
       ) : null}

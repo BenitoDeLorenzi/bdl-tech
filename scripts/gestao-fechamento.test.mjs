@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+import { readFileSync } from 'node:fs';
+const compile = (path) => ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext } }).outputText;
+const url = (source) => 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
+const typesUrl = url(compile('../src/lib/gestao-types.ts'));
+const { recebimentoLiquido, recebimentosIniciais, produtosDoFechamento } = await import(url(compile('../src/lib/gestao-fechamento.ts').replace('"./gestao-types"', JSON.stringify(typesUrl))));
+assert.deepEqual(recebimentoLiquido(100, 2.5), { bruto: 10000, taxa: 250, liquido: 9750 });
+assert.deepEqual(recebimentoLiquido(.05, 10), { bruto: 5, taxa: 1, liquido: 4 });
+assert.equal(recebimentoLiquido(999999999.99, 99.99).taxa, 99989999999);
+assert.equal(recebimentoLiquido(10, 100).liquido, 0);
+assert.equal(recebimentoLiquido(10).liquido, 1000);
+assert.equal(recebimentosIniciais().length, 5);
+const saved = { pagamentos: [{ forma: 'Crédito', origem: 'Máquina A', valor: 20, taxa_percentual: 2.5 }, { forma: 'Crédito', origem: 'Máquina B', valor: 30 }], itens: [{ produto_id: 'old', nome: 'Histórico', quantidade: 1, total: 12 }] };
+const initial = recebimentosIniciais(saved);
+assert.equal(initial.length, 6);
+assert.deepEqual(initial.filter(p => p.forma === 'Crédito').map(p => [p.origem,p.valor,p.taxa_percentual]), [['Máquina A','20','2,5'],['Máquina B','30','0']]);
+const catalog = produtosDoFechamento([{id:'a',nome:'Água',categoria:'Bebidas',ativo:true,preco:5}, {id:'b',nome:'Inativo',categoria:'Bebidas',ativo:false}], saved);
+assert.deepEqual(catalog.map(p => p.id), ['a','old']);
+console.log('PASS: exact fee rounding, bounds, all payment methods, preserved duplicate receipts, catalog/history');
+
+const feeDefaults = { Dinheiro: 0, Pix: 0.5, 'Débito': 1.9, 'Crédito': 3.25 };
+assert.equal(recebimentosIniciais(undefined, feeDefaults).find(p => p.forma === 'Crédito').taxa_percentual, '3,25');
+assert.equal(recebimentosIniciais(undefined, feeDefaults).find(p => p.forma === 'Pix').taxa_percentual, '0,5');
+assert.equal(recebimentosIniciais(saved, feeDefaults).filter(p => p.forma === 'Crédito')[0].taxa_percentual, '2,5');
+assert.equal(recebimentosIniciais(saved, feeDefaults).find(p => p.forma === 'Pix').taxa_percentual, '0');
+assert.equal(recebimentosIniciais().find(p => p.forma === 'Outros').taxa_percentual, '0');
+console.log('PASS: configured defaults, editable saved overrides and historical missing methods preserved, zero fallback.');

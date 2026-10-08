@@ -1,4 +1,9 @@
+import {
+  sidebarFooterClass,
+  sidebarNavClass,
+} from "@/components/sidebar-styles";
 import Link from "next/link";
+import { SidebarIdentity } from "@/components/sidebar-identity";
 import {
   Building2,
   Car,
@@ -6,8 +11,8 @@ import {
   ExternalLink,
   KeyRound,
   LayoutDashboard,
-  PlugZap,
   Settings,
+  Store,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -32,7 +37,7 @@ import type { CurrentUserProfile } from "@/lib/auth-data";
 type AdminSidebarProps = {
   active:
     | "dashboard"
-    | "prefeituras"
+    | "empresas"
     | "licencas"
     | "usuarios"
     | "modulos"
@@ -42,18 +47,23 @@ type AdminSidebarProps = {
 
 const navOperacoes = [
   { key: "dashboard", label: "Visão geral", href: "/", icon: LayoutDashboard },
-  { key: "prefeituras", label: "Prefeituras", href: "/prefeituras", icon: Building2 },
+  { key: "empresas", label: "Empresas", href: "/empresas", icon: Building2 },
   { key: "licencas", label: "Licenças", href: "/licencas", icon: KeyRound },
   { key: "usuarios", label: "Usuários", href: "/usuarios", icon: Users },
 ] as const;
 
 const navModulos = [
-  { label: "Frotas Públicas", href: "/frotas", icon: Car },
+  { label: "Vibe Frotas", href: "/frotas", icon: Car },
+  { label: "Vibe Gestão", href: "/gestao", icon: Store },
 ] as const;
 
 const navAdministracao = [
-  { key: "integracoes", label: "Integrações", href: "/integracoes/plexi", icon: PlugZap },
-  { key: "modulos", label: "Catálogo de módulos", href: "/modulos", icon: ClipboardList },
+  {
+    key: "modulos",
+    label: "Catálogo de módulos",
+    href: "/modulos",
+    icon: ClipboardList,
+  },
   { key: "configuracoes", label: "Configurações", href: "#", icon: Settings },
   { key: "seguranca", label: "Segurança", href: "#", icon: ShieldCheck },
 ] as const;
@@ -62,19 +72,13 @@ export function AdminSidebar({ active, profile }: AdminSidebarProps) {
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" isActive tooltip="BDL Tech">
-              <div className="flex aspect-square size-10 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
-                <ShieldCheck className="size-5" />
-              </div>
-              <div className="grid flex-1 text-left leading-tight">
-                <span className="truncate text-base font-semibold">BDL Tech</span>
-                <span className="truncate text-xs">Portal administrativo</span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <SidebarIdentity
+          moduleName="Vibe Tech"
+          icon={<ShieldCheck className="size-4 text-muted-foreground" />}
+          name="Vibe Tech"
+          description="Portal administrativo"
+          logoUrl="/vibe-tech-mark.svg"
+        />
       </SidebarHeader>
 
       <SidebarContent>
@@ -85,6 +89,7 @@ export function AdminSidebar({ active, profile }: AdminSidebarProps) {
               {navOperacoes.map((item) => (
                 <SidebarMenuItem key={item.key}>
                   <SidebarMenuButton
+                    className={sidebarNavClass}
                     isActive={active === item.key}
                     tooltip={item.label}
                     render={<Link href={item.href} />}
@@ -107,6 +112,7 @@ export function AdminSidebar({ active, profile }: AdminSidebarProps) {
               {navModulos.map((item) => (
                 <SidebarMenuItem key={item.label}>
                   <SidebarMenuButton
+                    className={sidebarNavClass}
                     tooltip={`${item.label} · abrir em nova aba`}
                     render={
                       <Link href={item.href} target="_blank" rel="noreferrer" />
@@ -131,6 +137,7 @@ export function AdminSidebar({ active, profile }: AdminSidebarProps) {
               {navAdministracao.map((item) => (
                 <SidebarMenuItem key={item.key}>
                   <SidebarMenuButton
+                    className={sidebarNavClass}
                     isActive={active === item.key}
                     tooltip={item.label}
                     render={<Link href={item.href} />}
@@ -145,9 +152,13 @@ export function AdminSidebar({ active, profile }: AdminSidebarProps) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className={sidebarFooterClass}>
         <SidebarMenu>
-          <SidebarUserMenu profile={profile} tooltip="Conta BDL" />
+          <SidebarUserMenu
+            emphasized
+            profile={profile}
+            tooltip="Conta Vibe Tech"
+          />
         </SidebarMenu>
       </SidebarFooter>
 

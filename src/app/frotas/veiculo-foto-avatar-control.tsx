@@ -2,10 +2,10 @@
 
 import { startTransition, useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Car, ImageOff, Loader2 } from "lucide-react";
+import { Camera, ImageOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { VeiculoAvatar } from "@/components/veiculo-avatar";
 import { Button } from "@/components/ui/button";
 import { type FrotaVeiculo } from "@/lib/frotas-data";
 import { removeVeiculoFoto, uploadVeiculoFoto } from "./actions";
@@ -76,18 +76,7 @@ export function VeiculoFotoAvatarControl({
   return (
     <div className="space-y-2">
       <div className="relative size-24">
-        <Avatar className="size-24 rounded-xl border">
-          {veiculo.foto_url ? (
-            <AvatarImage
-              src={veiculo.foto_url}
-              alt={`Foto do veículo ${veiculo.placa}`}
-              className="rounded-xl object-cover"
-            />
-          ) : null}
-          <AvatarFallback className="rounded-xl bg-background">
-            <Car className="size-9 text-muted-foreground" />
-          </AvatarFallback>
-        </Avatar>
+        <VeiculoAvatar fotoUrl={veiculo.foto_url} placa={veiculo.placa} className="size-24" />
 
         <input
           ref={fileRef}

@@ -27,11 +27,11 @@ export async function createMotorista(
   const cpf = onlyDigits(getRequiredValue(formData, "cpf"));
 
   if (!prefeituraId || !nome || !cpf) {
-    return { error: "Informe prefeitura, nome e CPF do motorista." };
+    return { error: "Informe empresa, nome e CPF do motorista." };
   }
 
   if (profile.role !== "bdl_admin" && prefeituraId !== profile.prefeitura_id) {
-    return { error: "Você só pode cadastrar motoristas da sua prefeitura." };
+    return { error: "Você só pode cadastrar motoristas da sua empresa." };
   }
 
   if (!isValidCpf(cpf)) {
@@ -71,11 +71,11 @@ export async function updateMotorista(
   const cpf = onlyDigits(getRequiredValue(formData, "cpf"));
 
   if (!id || !prefeituraId || !nome || !cpf) {
-    return { error: "Informe prefeitura, nome e CPF do motorista." };
+    return { error: "Informe empresa, nome e CPF do motorista." };
   }
 
   if (profile.role !== "bdl_admin" && prefeituraId !== profile.prefeitura_id) {
-    return { error: "Você só pode editar motoristas da sua prefeitura." };
+    return { error: "Você só pode editar motoristas da sua empresa." };
   }
 
   if (!isValidCpf(cpf)) {
@@ -138,7 +138,7 @@ export async function updateMotoristaStatus(
     profile.role !== "bdl_admin" &&
     motorista.prefeitura_id !== profile.prefeitura_id
   ) {
-    return { error: "Você só pode alterar motoristas da sua prefeitura." };
+    return { error: "Você só pode alterar motoristas da sua empresa." };
   }
 
   const { error } = await supabase
@@ -200,7 +200,7 @@ function calculateCpfDigit(numbers: number[], factor: number) {
 
 function formatMotoristaError(message: string) {
   if (message.includes("frota_motoristas_prefeitura_cpf_idx")) {
-    return "Já existe um motorista com este CPF nesta prefeitura.";
+    return "Já existe um motorista com este CPF nesta empresa.";
   }
 
   if (

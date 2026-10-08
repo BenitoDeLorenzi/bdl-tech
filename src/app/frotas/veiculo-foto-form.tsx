@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogCancel } from "@/components/form-dialog-cancel";
+
 import { startTransition, useActionState, useEffect, useRef } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -114,6 +116,7 @@ export function VeiculoFotoForm({ veiculo }: VeiculoFotoFormProps) {
       </fieldset>
 
       <DialogFooter>
+        <FormDialogCancel disabled={actionPending || removePending} />
         {veiculo.foto_url ? (
           <Button
             type="button"

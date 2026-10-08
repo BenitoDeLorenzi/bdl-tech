@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {periodoPainel,resumirPainel,diferencaFechamento} from '../src/lib/gestao-painel.ts';
+assert.deepEqual(periodoPainel('hoje',new Date('2026-10-01T02:00:00Z')),{periodo:'hoje',inicio:'2026-09-30',fim:'2026-09-30'});
+assert.equal(periodoPainel('7dias',new Date('2026-03-02T12:00:00Z')).inicio,'2026-02-24');
+assert.equal(periodoPainel('mes',new Date('2026-09-23T12:00:00Z')).inicio,'2026-09-01');
+assert.equal(periodoPainel('30dias',new Date('2026-03-02T12:00:00Z')).inicio,'2026-02-01');
+assert.equal(periodoPainel('invalid').periodo,'mes');
+const confirmed={status:'conferido',total:0.3,pagamentos:[{forma:'Pix',valor:0.1},{forma:'Dinheiro',valor:0.2}],itens:[{produto_id:'p',nome:'Produto',total:0.3}]};
+const draft={...confirmed,status:'rascunho',total:100};
+const data=resumirPainel([confirmed,draft]);
+assert.equal(data.vendas,30);assert.equal(data.recebimentos,30);assert.equal(data.valorPendente,10000);
+assert.equal(data.divergentes.length,1);assert.equal(diferencaFechamento(confirmed),0);
+assert.equal(data.produtos[0].total,30);
+assert.equal(resumirPainel(Array.from({length:120},()=>confirmed)).vendas,3600);
+assert.equal(resumirPainel([]).vendas,0);
+console.log('PASS: periods, Sao Paulo timezone, month boundaries, cents, draft exclusion, divergences, empty state, >100 closings.');
+
+const courtesyOnly = {...confirmed, total:0, pagamentos:[], itens:[{produto_id:'c',nome:'Cortesia',quantidade:0,cortesia:2,total:0}]};
+assert.equal(resumirPainel([courtesyOnly]).vendas,0);
+assert.equal(resumirPainel([courtesyOnly]).produtos.length,0);

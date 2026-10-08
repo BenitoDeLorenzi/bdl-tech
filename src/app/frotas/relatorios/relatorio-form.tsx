@@ -1,15 +1,13 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useMemo, useState } from "react";
+import { FormDialogCancel } from "@/components/form-dialog-cancel";
+
+import { startTransition, useActionState, useEffect, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  SecretariaCombobox,
-  type SecretariaComboboxOption,
-} from "@/components/secretaria-combobox";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -20,6 +18,7 @@ import {
   SelectItem,
   SelectLabel,
   SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import {
   fuelStatusOptions,
@@ -39,7 +38,6 @@ import { createRelatorio } from "./actions";
 type RelatorioFormProps = {
   postos: FrotaPostoCredenciado[];
   prefeituras: FrotaPrefeituraOption[];
-  secretarias: SecretariaComboboxOption[];
   selectedPrefeituraId?: string;
   showPrefeituraField: boolean;
   veiculos: FrotaVeiculo[];
@@ -66,7 +64,6 @@ const vencimentoStatusOptions = [
 export function RelatorioForm({
   postos,
   prefeituras,
-  secretarias,
   selectedPrefeituraId,
   showPrefeituraField,
   veiculos,
@@ -78,7 +75,6 @@ export function RelatorioForm({
   const [status, setStatus] = useState("all");
   const [postoId, setPostoId] = useState("all");
   const [veiculoId, setVeiculoId] = useState("all");
-  const [secretaria, setSecretaria] = useState("all");
   const [combustivel, setCombustivel] = useState("all");
   const [vencimentoTipo, setVencimentoTipo] = useState("all");
   const [titulo, setTitulo] = useState(getDefaultReportTitle("vehicles"));
@@ -120,7 +116,7 @@ export function RelatorioForm({
       <input name="status" type="hidden" value={status} />
       <input name="posto_id" type="hidden" value={postoId} />
       <input name="veiculo_id" type="hidden" value={veiculoId} />
-      <input name="secretaria" type="hidden" value={secretaria} />
+
       <input name="combustivel" type="hidden" value={combustivel} />
       <input name="vencimento_tipo" type="hidden" value={vencimentoTipo} />
 
@@ -141,14 +137,14 @@ export function RelatorioForm({
           {showPrefeituraField ? (
             <SelectField
               className="sm:col-span-7"
-              label="Prefeitura"
+              label="Empresa"
               options={prefeituras.map((prefeitura) => ({
                 label: prefeitura.nome,
                 value: prefeitura.id,
               }))}
               value={prefeituraId}
               onChange={setPrefeituraId}
-              placeholder="Selecione a prefeitura"
+              placeholder="Selecione a empresa"
             />
           ) : null}
 
@@ -220,34 +216,9 @@ export function RelatorioForm({
               onChange={setPostoId}
             />
           ) : null}
-          {(tipo === "fuel" || tipo === "maintenance" || tipo === "vehicles") ? (
-            <Field
-              className={
-                tipo === "vehicles" ? "sm:col-span-4" : "sm:col-span-6"
-              }
-            >
-              <FieldLabel htmlFor="secretaria">Secretaria</FieldLabel>
-              <SecretariaCombobox
-                id="secretaria"
-                value={secretaria}
-                onChange={(value) => setSecretaria(value ?? "all")}
-                secretarias={[
-                  {
-                    id: "all",
-                    label: "Todas",
-                    nome: "all",
-                    prefeitura_id: selectedPrefeituraId,
-                    prefeitura_nome: "Todas as secretarias",
-                    status: "active",
-                  },
-                  ...secretarias,
-                ]}
-              />
-            </Field>
-          ) : null}
           {tipo === "vehicles" ? (
             <SelectField
-              className="sm:col-span-4"
+              className="sm:col-span-6"
               label="Combustível"
               options={[
                 { label: "Todos", value: "all" },
@@ -268,9 +239,9 @@ export function RelatorioForm({
           ) : null}
             <SelectField
               className={
-                tipo === "vehicles" || tipo === "expirations"
+                tipo === "expirations"
                   ? "sm:col-span-4"
-                  : "sm:col-span-6"
+                  : tipo === "fuel" ? "sm:col-span-12" : "sm:col-span-6"
               }
               label="Status"
               options={
@@ -289,6 +260,7 @@ export function RelatorioForm({
       </fieldset>
 
       <DialogFooter>
+        <FormDialogCancel disabled={actionPending} />
         <Button className="gap-2" disabled={actionPending} type="submit">
           {actionPending ? (
             <Loader2 className="size-4 animate-spin" />
@@ -317,15 +289,14 @@ function SelectField({
   placeholder?: string;
   value: string;
 }) {
-  const selectedLabel =
-    options.find((option) => option.value === value)?.label ?? placeholder;
+  const id = useId();
 
   return (
     <Field className={className}>
-      <FieldLabel>{label}</FieldLabel>
-      <Select value={value} onValueChange={(nextValue) => nextValue && onChange(nextValue)}>
-        <SelectTrigger className="h-9 w-full">
-          <span className="truncate text-left">{selectedLabel}</span>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Select items={options} value={value} onValueChange={(nextValue) => nextValue && onChange(nextValue)}>
+        <SelectTrigger id={id} className="h-9 w-full">
+          <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>

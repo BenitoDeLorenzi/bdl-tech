@@ -1,0 +1,8 @@
+-- Team drafts and payroll remain manager-only, including when a closing is visible to operators.
+create table public.gestao_fechamento_equipe (
+ fechamento_id uuid not null references public.gestao_fechamentos(id) on delete cascade,
+ empresa_id uuid not null, unidade_id uuid not null, colaborador_id uuid not null,
+ nome text not null, presente boolean not null, valor_trabalho numeric(12,2) not null default 0,
+ valor_pago numeric(12,2) not null default 0, saldo_anterior numeric(14,2), saldo_final numeric(14,2),
+ primary key(fechamento_id,colaboradorador_id)
+);

@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogCancel } from "@/components/form-dialog-cancel";
+
 import { startTransition, useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
@@ -20,7 +22,7 @@ import {
 } from "@/components/ui/combobox";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+
 import {
   Item,
   ItemContent,
@@ -46,6 +48,7 @@ import { createAbastecimento } from "./actions";
 
 type AbastecimentoFormProps = {
   onCreated?: (abastecimento: FrotaAbastecimento) => void;
+  motoristas: { id: string; nome: string; cpf: string | null }[];
   postos: FrotaPostoCredenciado[];
   veiculos: FrotaVeiculo[];
 };
@@ -54,7 +57,6 @@ type AbastecimentoFormValues = {
   arla_incluso: boolean;
   combustivel: string | null;
   data_abastecimento: string;
-  emitido_por: string;
   motorista: string;
   observacoes: string;
   posto_id: string | null;
@@ -74,6 +76,7 @@ const combustivelItems = [
 
 export function AbastecimentoForm({
   onCreated,
+  motoristas,
   postos,
   veiculos,
 }: AbastecimentoFormProps) {
@@ -89,7 +92,6 @@ export function AbastecimentoForm({
       arla_incluso: false,
       combustivel: null,
       data_abastecimento: today,
-      emitido_por: "",
       motorista: "",
       observacoes: "",
       posto_id: null,
@@ -121,8 +123,7 @@ export function AbastecimentoForm({
         arla_incluso: false,
         combustivel: null,
         data_abastecimento: today,
-        emitido_por: "",
-        motorista: "",
+          motorista: "",
         observacoes: "",
         posto_id: null,
         veiculo_id: null,
@@ -136,7 +137,6 @@ export function AbastecimentoForm({
     formData.set("data_abastecimento", values.data_abastecimento);
     formData.set("motorista", values.motorista);
     formData.set("posto_id", values.posto_id ?? "");
-    formData.set("emitido_por", values.emitido_por);
     formData.set("combustivel", values.combustivel ?? "");
     formData.set("arla_incluso", values.arla_incluso ? "true" : "false");
     formData.set("observacoes", values.observacoes);
@@ -214,21 +214,47 @@ export function AbastecimentoForm({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-12">
-            <TextField
-              className="sm:col-span-4"
+            <Controller
               control={form.control}
-              disabled={actionPending}
-              label="Motorista"
               name="motorista"
               rules={{ required: "Informe o motorista." }}
-            />
-            <TextField
-              className="sm:col-span-4"
-              control={form.control}
-              disabled={actionPending}
-              label="Emitido por"
-              name="emitido_por"
-              rules={{ required: "Informe quem está emitindo." }}
+              render={({ field, fieldState }) => (
+                <Field className="sm:col-span-8" data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="motorista">Motorista</FieldLabel>
+                  <Combobox
+                    items={motoristas}
+                    inputValue={field.value}
+                    value={motoristas.find((item) => item.nome === field.value) ?? null}
+                    onInputValueChange={(value, details) => {
+                      if (details.reason === "input-change") field.onChange(value);
+                    }}
+                    onValueChange={(item) => { if (item) field.onChange(item.nome); }}
+                    itemToStringLabel={(item) => item.nome}
+                    filter={(item, query) => {
+                      const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                      const digits = query.replace(/\D/g, "");
+                      return normalize(item.nome).includes(normalize(query)) || Boolean(digits && item.cpf?.replace(/\D/g, "").includes(digits));
+                    }}
+                    disabled={actionPending}
+                  >
+                    <ComboboxInput id="motorista" ref={field.ref} onBlur={field.onBlur} aria-invalid={fieldState.invalid} placeholder="Pesquise por nome ou CPF" />
+                    <ComboboxContent>
+                      <ComboboxEmpty>Nenhum motorista encontrado. Você pode informar o nome.</ComboboxEmpty>
+                      <ComboboxList>
+                        {(item) => (
+                          <ComboboxItem key={item.id} value={item}>
+                            <div className="flex flex-col gap-0.5">
+                              <span>{item.nome}</span>
+                              <span className="text-xs text-muted-foreground">{item.cpf?.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") ?? "CPF não informado"}</span>
+                            </div>
+                          </ComboboxItem>
+                        )}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
             />
             <Controller
               control={form.control}
@@ -336,6 +362,7 @@ export function AbastecimentoForm({
       </fieldset>
 
       <DialogFooter>
+        <FormDialogCancel disabled={actionPending} />
         <Button type="submit" className="gap-2" disabled={actionPending}>
           {actionPending ? (
             <Loader2 className="size-4 animate-spin" />
@@ -375,7 +402,7 @@ function VehicleCombobox({
         `${veiculo.modelo} · ${veiculo.placa}`
       }
       itemToStringValue={(veiculo: FrotaVeiculo) =>
-        `${veiculo.modelo} ${veiculo.marca} ${veiculo.placa} ${veiculo.secretaria}`
+        `${veiculo.modelo} ${veiculo.marca} ${veiculo.placa}`
       }
       isItemEqualToValue={(item: FrotaVeiculo, selected: FrotaVeiculo) =>
         item.id === selected.id
@@ -397,7 +424,7 @@ function VehicleCombobox({
                     {veiculo.modelo} · {veiculo.placa}
                   </ItemTitle>
                   <ItemDescription>
-                    {veiculo.marca} · {veiculo.secretaria || "Sem secretaria"}
+                    {veiculo.marca}
                   </ItemDescription>
                 </ItemContent>
               </Item>
@@ -406,57 +433,6 @@ function VehicleCombobox({
         </ComboboxList>
       </ComboboxContent>
     </Combobox>
-  );
-}
-
-type TextFieldProps = {
-  className?: string;
-  control: ReturnType<typeof useForm<AbastecimentoFormValues>>["control"];
-  disabled?: boolean;
-  inputMode?: "numeric";
-  label: string;
-  name: keyof AbastecimentoFormValues;
-  placeholder?: string;
-  rules?: Parameters<typeof Controller<AbastecimentoFormValues>>[0]["rules"];
-  transform?: (value: string) => string;
-};
-
-function TextField({
-  className,
-  control,
-  disabled,
-  inputMode,
-  label,
-  name,
-  placeholder,
-  rules,
-  transform,
-}: TextFieldProps) {
-  return (
-    <Controller
-      control={control}
-      name={name}
-      rules={rules}
-      render={({ field, fieldState }) => (
-        <Field className={className} data-invalid={fieldState.invalid}>
-          <FieldLabel htmlFor={name}>{label}</FieldLabel>
-          <Input
-            id={name}
-            value={String(field.value ?? "")}
-            disabled={disabled}
-            inputMode={inputMode}
-            placeholder={placeholder}
-            aria-invalid={fieldState.invalid}
-            onChange={(event) =>
-              field.onChange(
-                transform ? transform(event.target.value) : event.target.value
-              )
-            }
-          />
-          <FieldError errors={[fieldState.error]} />
-        </Field>
-      )}
-    />
   );
 }
 

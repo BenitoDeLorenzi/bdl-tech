@@ -9,7 +9,6 @@ import {
   ClipboardList,
   KeyRound,
   LayoutDashboard,
-  ShieldCheck,
   Users,
 } from "lucide-react";
 
@@ -23,6 +22,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth-data";
+import { BrandMark } from "@/components/brand-mark";
 import {
   getLicencas,
   type Licenca,
@@ -78,15 +78,15 @@ const usuarioRoleMeta: Record<
 > = {
   bdl_admin: {
     badge: "border-sky-200 bg-sky-50 text-sky-700",
-    label: "Administradores BDL",
+    label: "Master",
   },
   municipal_admin: {
     badge: "border-violet-200 bg-violet-50 text-violet-700",
-    label: "Admins municipais",
+    label: "Administradores",
   },
   municipal_user: {
     badge: "border-zinc-200 bg-zinc-50 text-zinc-700",
-    label: "Usuários municipais",
+    label: "Usuários",
   },
 };
 
@@ -147,11 +147,11 @@ export default async function Home() {
           <CardContent className="flex flex-col gap-4 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <ShieldCheck className="size-4" />
+                <BrandMark className="size-6" />
                 Portal administrativo
               </div>
               <h2 className="mt-1 truncate text-2xl font-semibold">
-                BDL Tech
+                Vibe Tech
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Panorama comercial e operacional dos clientes, módulos,
@@ -175,7 +175,7 @@ export default async function Home() {
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             icon={Building2}
-            label="Prefeituras"
+            label="Empresas"
             note={`${clientesComLicenca} com licença ativa`}
             value={prefeituras.length.toString()}
           />
@@ -211,7 +211,7 @@ export default async function Home() {
             <CardHeader>
               <CardTitle>Carteira de clientes</CardTitle>
               <CardDescription>
-                Distribuição das prefeituras por status administrativo.
+                Distribuição das empresas por status administrativo.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -316,7 +316,7 @@ export default async function Home() {
             <CardHeader>
               <CardTitle>Clientes recentes</CardTitle>
               <CardDescription>
-                Últimas prefeituras cadastradas no portal.
+                Últimas empresas cadastradas no portal.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -332,7 +332,7 @@ export default async function Home() {
               ) : (
                 <EmptyState
                   icon={Building2}
-                  text="Nenhuma prefeitura cadastrada."
+                  text="Nenhuma empresa cadastrada."
                 />
               )}
             </CardContent>
@@ -414,7 +414,7 @@ function PrefeituraStatusRow({
             {formatPrefeituraStatus(status)}
           </Badge>
           <span className="text-sm text-muted-foreground">
-            {count} prefeitura(s)
+            {count} empresa(s)
           </span>
         </div>
         <span className="text-sm font-medium">{percentage}%</span>

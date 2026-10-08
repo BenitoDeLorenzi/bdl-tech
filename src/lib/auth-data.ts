@@ -4,6 +4,8 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import type { UsuarioRole } from "@/lib/usuarios-data";
 
 export type CurrentUserProfile = {
+  email_contato?: string | null;
+  prefeitura_nome_fantasia?: string | null;
   ativo: boolean;
   cpf: string | null;
   email: string | null;
@@ -14,18 +16,27 @@ export type CurrentUserProfile = {
   prefeitura_nome: string | null;
   role: UsuarioRole;
   username: string | null;
+  telefone?: string | null;
+  avatar_url?: string | null;
 };
 
 type PerfilRow = {
+  email_contato: string | null;
   ativo: boolean | null;
   cpf: string | null;
   email: string | null;
   id: string;
   nome: string;
   prefeitura_id: string | null;
-  prefeituras: { brasao_url: string | null; nome: string } | null;
+  prefeituras: {
+    brasao_url: string | null;
+    nome: string;
+    nome_fantasia: string | null;
+  } | null;
   role: UsuarioRole;
   username: string | null;
+  telefone: string | null;
+  avatar_path: string | null;
 };
 
 export async function getCurrentUserProfile() {
@@ -41,7 +52,9 @@ export async function getCurrentUserProfile() {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
     .from("perfis")
-    .select("id,nome,email,username,cpf,role,prefeitura_id,ativo,prefeituras(nome,brasao_url)")
+    .select(
+      "id,nome,email,email_contato,username,cpf,telefone,avatar_path,role,prefeitura_id,ativo,prefeituras:empresas!perfis_prefeitura_id_fkey(nome,nome_fantasia,brasao_url)",
+    )
     .eq("id", user.id)
     .maybeSingle();
 
@@ -55,7 +68,16 @@ export async function getCurrentUserProfile() {
     return null;
   }
 
+  const avatar = perfil.avatar_path?.startsWith(`${user.id}/`)
+    ? await supabase.storage
+        .from("profile-photos")
+        .createSignedUrl(perfil.avatar_path, 3600)
+    : null;
   return {
+    telefone: perfil.telefone,
+    email_contato: perfil.email_contato,
+    prefeitura_nome_fantasia: perfil.prefeituras?.nome_fantasia ?? null,
+    avatar_url: avatar?.data?.signedUrl ?? null,
     ativo: perfil.ativo ?? true,
     cpf: perfil.cpf,
     email: perfil.email,

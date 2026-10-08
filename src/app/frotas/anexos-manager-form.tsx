@@ -1,4 +1,5 @@
 "use client";
+import { ListDeleteButton } from "@/components/list-delete-button";
 
 import { startTransition, useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -6,6 +7,7 @@ import { Controller, useForm } from "react-hook-form";
 import {
   AlertCircle,
   ExternalLink,
+  Download,
   FileText,
   Loader2,
   Trash2,
@@ -17,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type FrotaAnexo } from "@/lib/frotas-data";
 import {
   addManutencaoAnexos,
@@ -26,7 +29,10 @@ import {
   type FrotaActionState,
 } from "./actions";
 
+type PdfDocument = { url: string; downloadUrl: string; createdAt: string };
+
 type AnexosManagerFormProps = {
+  pdfDocument?: PdfDocument;
   anexos: FrotaAnexo[];
   ownerId: string;
   ownerLabel: string;
@@ -48,6 +54,7 @@ const deleteActions = {
 };
 
 export function AnexosManagerForm({
+  pdfDocument,
   anexos,
   ownerId,
   ownerLabel,
@@ -91,67 +98,11 @@ export function AnexosManagerForm({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border">
-        {anexos.length ? (
-          <div className="divide-y">
-            {anexos.map((anexo) => (
-              <div
-                key={anexo.id}
-                className="flex items-center gap-3 px-3 py-2.5"
-              >
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
-                  <FileText className="size-4 text-muted-foreground" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">
-                    {anexo.file_name}
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{formatFileSize(anexo.file_size)}</span>
-                    {anexo.created_at ? (
-                      <>
-                        <span>·</span>
-                        <span>{formatDate(anexo.created_at)}</span>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-                {anexo.signed_url ? (
-                  <a
-                    href={anexo.signed_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={buttonVariants({
-                      variant: "ghost",
-                      size: "icon-sm",
-                    })}
-                    aria-label={`Abrir ${anexo.file_name}`}
-                  >
-                    <ExternalLink className="size-4" />
-                  </a>
-                ) : null}
-                <DeleteAnexoButton anexoId={anexo.id} type={type} />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex min-h-28 flex-col items-center justify-center p-6 text-center">
-            <div className="flex size-10 items-center justify-center rounded-lg border bg-muted/40">
-              <FileText className="size-5 text-muted-foreground" />
-            </div>
-            <div className="mt-3 text-sm font-medium">
-              Nenhum documento anexado
-            </div>
-            <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-              Envie notas fiscais, comprovantes, laudos ou outros documentos de
-              {ownerLabel}.
-            </p>
-          </div>
-        )}
-      </div>
+      <AnexosList anexos={anexos} type={type} canDelete pdfDocument={pdfDocument} />
 
       <form
         ref={formRef}
+        aria-label={`Adicionar documentos de ${ownerLabel}`}
         onSubmit={form.handleSubmit(submitForm)}
         className="space-y-3 rounded-lg border bg-muted/20 p-3"
         noValidate
@@ -209,6 +160,14 @@ export function AnexosManagerForm({
   );
 }
 
+export function AnexosList({ anexos, type = "veiculo", canDelete = false, pdfDocument }: { anexos: FrotaAnexo[]; type?: "manutencao" | "veiculo"; canDelete?: boolean; pdfDocument?: PdfDocument }) {
+  return <div className="overflow-hidden rounded-lg border"><Table><TableHeader><TableRow className="bg-muted/50"><TableHead>Documento</TableHead><TableHead>Tipo</TableHead><TableHead>Tamanho</TableHead><TableHead>Data</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader><TableBody>
+    {pdfDocument ? <TableRow><TableCell><div className="flex items-center gap-2 font-medium"><FileText className="size-4 text-muted-foreground" />Consulta Detran/SC</div></TableCell><TableCell>PDF</TableCell><TableCell>-</TableCell><TableCell>{formatDate(pdfDocument.createdAt)}</TableCell><TableCell><div className="flex justify-end gap-1"><a href={pdfDocument.url} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Visualizar consulta Detran/SC"><ExternalLink className="size-4" /></a><a href={pdfDocument.downloadUrl} className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label="Baixar consulta Detran/SC"><Download className="size-4" /></a></div></TableCell></TableRow> : null}
+    {anexos.map((anexo) => <TableRow key={anexo.id}><TableCell className="max-w-[420px] whitespace-normal font-medium">{anexo.file_name}</TableCell><TableCell>{anexo.file_type === "application/pdf" ? "PDF" : anexo.file_type?.startsWith("image/") ? "Imagem" : "Documento"}</TableCell><TableCell>{formatFileSize(anexo.file_size)}</TableCell><TableCell>{anexo.created_at ? formatDate(anexo.created_at) : "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{anexo.signed_url ? <a href={anexo.signed_url} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "ghost", size: "icon-sm" })} aria-label={"Abrir " + anexo.file_name}><ExternalLink className="size-4" /></a> : null}{canDelete ? <DeleteAnexoButton anexoId={anexo.id} type={type} /> : null}</div></TableCell></TableRow>)}
+    {!anexos.length && !pdfDocument ? <TableRow><TableCell colSpan={5} className="h-28 text-center text-muted-foreground">Nenhum documento anexado.</TableCell></TableRow> : null}
+  </TableBody></Table></div>;
+}
+
 function DeleteAnexoButton({
   anexoId,
   type,
@@ -234,10 +193,8 @@ function DeleteAnexoButton({
   return (
     <form action={formAction}>
       <input type="hidden" name="id" value={anexoId} />
-      <Button
+      <ListDeleteButton
         type="submit"
-        variant="ghost"
-        size="icon-sm"
         disabled={actionPending}
         aria-label="Remover documento"
       >
@@ -246,7 +203,7 @@ function DeleteAnexoButton({
         ) : (
           <Trash2 className="size-4" />
         )}
-      </Button>
+      </ListDeleteButton>
       {state.error ? (
         <Badge variant="destructive" className="mt-2">
           {state.error}

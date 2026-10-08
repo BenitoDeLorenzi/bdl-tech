@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogCancel } from "@/components/form-dialog-cancel";
+
 import {
   startTransition,
   useActionState,
@@ -44,19 +46,21 @@ import {
   ItemTitle,
 } from "@/components/ui/item";
 import { Textarea } from "@/components/ui/textarea";
-import { type FrotaManutencao, type FrotaVeiculo } from "@/lib/frotas-data";
-import { createManutencao, updateManutencao } from "./actions";
+import {  type FrotaVeiculo } from "@/lib/frotas-data";
+import { OficinaCombobox } from "@/components/oficina-combobox";
+import type { FrotaOficina } from "@/lib/oficinas-data";
+import { createManutencao } from "./actions";
 
 type ManutencaoFormProps = {
-  manutencao?: FrotaManutencao;
   selectedVeiculoId?: string;
   veiculos: FrotaVeiculo[];
+  oficinas: FrotaOficina[];
 };
 
 type ManutencaoFormValues = {
   data_entrada: string;
   descricao: string;
-  oficina: string;
+  oficina_id: string;
   observacoes: string;
   quilometragem: string;
   responsavel: string;
@@ -79,48 +83,43 @@ const tipoItems = [
 ];
 
 export function ManutencaoForm({
-  manutencao,
   selectedVeiculoId,
   veiculos,
+  oficinas,
 }: ManutencaoFormProps) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const isEditing = Boolean(manutencao);
-  const defaultVeiculoId = manutencao?.veiculo_id ?? selectedVeiculoId ?? null;
+  const defaultVeiculoId = selectedVeiculoId ?? null;
   const [state, formAction, actionPending] = useActionState(
-    isEditing ? updateManutencao : createManutencao,
+    createManutencao,
     {}
   );
   const today = new Date().toISOString().slice(0, 10);
   const form = useForm<ManutencaoFormValues>({
     defaultValues: {
-      data_entrada: manutencao?.data_entrada ?? today,
-      descricao: manutencao?.descricao ?? "",
-      oficina: manutencao?.oficina ?? "",
-      observacoes: manutencao?.observacoes ?? "",
-      quilometragem: manutencao?.quilometragem
-        ? String(manutencao.quilometragem)
-        : "",
-      responsavel: manutencao?.responsavel ?? "",
-      tipo: manutencao?.tipo ?? null,
-      valor: manutencao?.valor ? formatCurrencyValue(manutencao.valor) : "",
+      data_entrada: today,
+      descricao: "",
+      oficina_id: "",
+      observacoes: "",
+      quilometragem: "",
+      responsavel: "",
+      tipo: null,
+      valor: "",
       veiculo_id: defaultVeiculoId,
     },
   });
   useEffect(() => {
     if (state.success) {
       toast.success(state.success, {
-        id: isEditing
-          ? `manutencao-edit-${manutencao?.id}`
-          : "manutencao-create-success",
+        id: "manutencao-create-success",
       });
       router.refresh();
       closeParentDialog(formRef.current);
-      if (!isEditing) {
+      {
         form.reset({
           data_entrada: today,
           descricao: "",
-          oficina: "",
+          oficina_id: "",
           observacoes: "",
           quilometragem: "",
           responsavel: "",
@@ -132,8 +131,6 @@ export function ManutencaoForm({
     }
   }, [
     form,
-    isEditing,
-    manutencao?.id,
     router,
     selectedVeiculoId,
     state.success,
@@ -143,15 +140,11 @@ export function ManutencaoForm({
   function submitForm(values: ManutencaoFormValues) {
     const formData = new FormData();
 
-    if (manutencao?.id) {
-      formData.set("id", manutencao.id);
-    }
-
-    formData.set("veiculo_id", values.veiculo_id ?? "");
+formData.set("veiculo_id", values.veiculo_id ?? "");
     formData.set("tipo", values.tipo ?? "");
     formData.set("descricao", values.descricao);
     formData.set("data_entrada", values.data_entrada);
-    formData.set("oficina", values.oficina);
+    formData.set("oficina_id", values.oficina_id);
     formData.set("responsavel", values.responsavel);
     formData.set("valor", values.valor);
     formData.set("quilometragem", values.quilometragem);
@@ -191,7 +184,7 @@ export function ManutencaoForm({
                   <FieldLabel htmlFor="veiculo_id">Veículo</FieldLabel>
                   <VehicleCombobox
                     id="veiculo_id"
-                    disabled={actionPending || isEditing}
+                    disabled={actionPending}
                     invalid={fieldState.invalid}
                     onChange={field.onChange}
                     value={field.value}
@@ -264,12 +257,17 @@ export function ManutencaoForm({
                 </Field>
               )}
             />
-            <TextField
-              className="sm:col-span-4"
+            <Controller
               control={form.control}
-              disabled={actionPending}
-              label="Oficina"
-              name="oficina"
+              name="oficina_id"
+              rules={{ required: "Selecione uma oficina." }}
+              render={({ field, fieldState }) => (
+                <Field className="sm:col-span-4" data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="oficina_id">Oficina</FieldLabel>
+                  <OficinaCombobox id="oficina_id" value={field.value} onChange={field.onChange} disabled={actionPending} invalid={fieldState.invalid} oficinas={oficinas.filter(item => item.status === "active")} />
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
             />
             <TextField
               className="sm:col-span-4"
@@ -340,19 +338,14 @@ export function ManutencaoForm({
       </fieldset>
 
       <DialogFooter>
+        <FormDialogCancel disabled={actionPending} />
         <Button type="submit" className="gap-2" disabled={actionPending}>
           {actionPending ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <CheckCircle2 className="size-4" />
           )}
-          {actionPending
-            ? isEditing
-              ? "Salvando..."
-              : "Registrando..."
-            : isEditing
-              ? "Salvar manutenção"
-              : "Registrar manutenção"}
+          {actionPending ? "Registrando..." : "Registrar manutenção"}
         </Button>
       </DialogFooter>
     </form>
@@ -387,7 +380,7 @@ function VehicleCombobox({
         `${veiculo.modelo} · ${veiculo.placa}`
       }
       itemToStringValue={(veiculo: FrotaVeiculo) =>
-        `${veiculo.modelo} ${veiculo.marca} ${veiculo.placa} ${veiculo.prefixo} ${veiculo.secretaria}`
+        `${veiculo.modelo} ${veiculo.marca} ${veiculo.placa} ${veiculo.prefixo}`
       }
       isItemEqualToValue={(item: FrotaVeiculo, selected: FrotaVeiculo) =>
         item.id === selected.id
@@ -410,7 +403,7 @@ function VehicleCombobox({
                     {veiculo.modelo} · {veiculo.placa}
                   </ItemTitle>
                   <ItemDescription>
-                    {veiculo.marca} · {veiculo.secretaria || "Sem secretaria"}
+                    {veiculo.marca}
                   </ItemDescription>
                 </ItemContent>
               </Item>
@@ -481,13 +474,6 @@ function formatCurrencyInput(value: string) {
     currency: "BRL",
     style: "currency",
   }).format(numericValue);
-}
-
-function formatCurrencyValue(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    currency: "BRL",
-    style: "currency",
-  }).format(value);
 }
 
 function closeParentDialog(formElement: HTMLFormElement | null) {

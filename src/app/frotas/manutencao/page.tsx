@@ -1,20 +1,21 @@
+import { CancellationDetails } from "@/components/cancellation-details";
+import { CancelFrotaDialog } from "@/components/cancel-frota-dialog";
+import { DeleteManutencaoButton } from "./delete-manutencao-button";
+import { ListStatusActionButton } from "@/components/list-status-action-button";
+import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
 import {
-  BadgeDollarSign,
   CalendarClock,
-  CheckCircle2,
   CircleAlert,
   CircleCheck,
   CircleX,
   Eye,
   FileText,
   Paperclip,
-  Pencil,
   Plus,
   Search,
   Wrench,
   X,
-  XCircle,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -35,7 +35,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { HeaderSeparator } from "@/components/header-separator";
 import {
   Table,
   TableBody,
@@ -153,14 +153,13 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
                 </div>
                 <div>
                   <CardTitle>Registros de manutenção</CardTitle>
-                  <CardDescription>
-                    Histórico operacional e documental da frota.
-                  </CardDescription>
                 </div>
               </div>
-              <Badge variant="outline">
-                {data.manutencoes.length} registro(s)
-              </Badge>
+              <ListMetrics
+                items={[
+                  { label: "Total", value: data.manutencoes.length },
+                ]}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -170,9 +169,11 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead>Veículo</TableHead>
+                      <TableHead>Oficina</TableHead>
+                      <TableHead>Tipo</TableHead>
                       <TableHead>Serviço</TableHead>
                       <TableHead>Entrada</TableHead>
-                      <TableHead>Valor</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Anexos</TableHead>
                       <TableHead className="w-[112px] text-right">
@@ -193,36 +194,22 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
                             </div>
                           </div>
                         </TableCell>
+                        <TableCell>{manutencao.oficina ?? "-"}</TableCell>
                         <TableCell>
-                          <div className="min-w-[220px]">
-                            <Badge variant="outline" className="mb-1">
-                              {manutencao.tipo}
-                            </Badge>
-                            <div className="line-clamp-2 text-sm">
-                              {manutencao.descricao}
-                            </div>
-                            {manutencao.oficina ? (
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                {manutencao.oficina}
-                              </div>
-                            ) : null}
-                          </div>
+                          <Badge variant="outline" className="font-normal">
+                            {manutencao.tipo}
+                          </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2 text-sm">
-                            <CalendarClock className="size-4 text-muted-foreground" />
-                            {formatFrotaDate(manutencao.data_entrada)}
+                          <div className="min-w-[180px] max-w-[320px] whitespace-normal break-words text-sm">
+                            {manutencao.descricao}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <BadgeDollarSign className="size-4 text-muted-foreground" />
-                            <span className="font-medium">
-                              {manutencao.valor
-                                ? formatCurrency(manutencao.valor)
-                                : "-"}
-                            </span>
-                          </div>
+                        <TableCell className="tabular-nums">
+                          {formatFrotaDate(manutencao.data_entrada)}
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {manutencao.valor != null ? formatCurrency(manutencao.valor) : "-"}
                         </TableCell>
                         <TableCell>
                           <ManutencaoStatusBadge status={manutencao.status} />
@@ -236,8 +223,8 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
                         <TableCell>
                           <ManutencaoActions
                             access={access}
+                            canDelete={profile.role === "bdl_admin"}
                             manutencao={manutencao}
-                            veiculos={data.veiculos}
                           />
                         </TableCell>
                       </TableRow>
@@ -248,7 +235,7 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
             ) : (
               <EmptyMaintenanceState
                 canCreate={access.canCreateManutencao}
-                veiculos={data.veiculos}
+                veiculos={data.veiculos} oficinas={data.oficinas}
               />
             )}
           </CardContent>
@@ -339,7 +326,7 @@ function ManutencaoToolbar({
         })}
       </div>
 
-      <Separator orientation="vertical" className="hidden h-5 xl:block" />
+      {access.canCreateManutencao ? <HeaderSeparator className="hidden xl:block" /> : null}
 
       {access.canCreateManutencao ? (
         <Dialog>
@@ -355,7 +342,7 @@ function ManutencaoToolbar({
             <DialogHeader>
               <DialogTitle>Nova manutenção</DialogTitle>
             </DialogHeader>
-            <ManutencaoForm veiculos={data.veiculos} />
+            <ManutencaoForm veiculos={data.veiculos} oficinas={data.oficinas} />
           </DialogContent>
         </Dialog>
       ) : null}
@@ -364,13 +351,13 @@ function ManutencaoToolbar({
 }
 
 function ManutencaoActions({
+  canDelete,
   access,
   manutencao,
-  veiculos,
 }: {
+  canDelete: boolean;
   access: Awaited<ReturnType<typeof getFrotasPermissionAccess>>;
   manutencao: FrotaManutencao;
-  veiculos: Awaited<ReturnType<typeof getManutencoesData>>["veiculos"];
 }) {
   return (
     <div className="flex justify-end gap-1">
@@ -401,33 +388,6 @@ function ManutencaoActions({
           <ManutencaoDetails manutencao={manutencao} />
         </DialogContent>
       </Dialog>
-
-      {access.canUpdateManutencao ? (
-        <Dialog>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <DialogTrigger
-                  className={buttonVariants({
-                    variant: "ghost",
-                    size: "icon-sm",
-                  })}
-                  aria-label="Editar manutenção"
-                >
-                  <Pencil className="size-4" />
-                </DialogTrigger>
-              }
-            />
-            <TooltipContent>Editar manutenção</TooltipContent>
-          </Tooltip>
-          <DialogContent className="sm:max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>Editar manutenção</DialogTitle>
-            </DialogHeader>
-            <ManutencaoForm manutencao={manutencao} veiculos={veiculos} />
-          </DialogContent>
-        </Dialog>
-      ) : null}
 
       {access.canUpdateManutencao ? (
         <Dialog>
@@ -472,15 +432,7 @@ function ManutencaoActions({
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <DialogTrigger
-                      className={buttonVariants({
-                        variant: "ghost",
-                        size: "icon-sm",
-                      })}
-                      aria-label="Concluir manutenção"
-                    >
-                      <CheckCircle2 className="size-4" />
-                    </DialogTrigger>
+                    <DialogTrigger render={<ListStatusActionButton action="complete" aria-label="Concluir manutenção" />} />
                   }
                 />
                 <TooltipContent>Concluir manutenção</TooltipContent>
@@ -498,29 +450,11 @@ function ManutencaoActions({
           ) : null}
 
           {access.canCancelManutencao ? (
-            <form action={cancelManutencao}>
-              <input type="hidden" name="id" value={manutencao.id} />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="submit"
-                      aria-label="Cancelar manutenção"
-                      className={buttonVariants({
-                        variant: "ghost",
-                        size: "icon-sm",
-                      })}
-                    >
-                      <XCircle className="size-4" />
-                    </button>
-                  }
-                />
-                <TooltipContent>Cancelar manutenção</TooltipContent>
-              </Tooltip>
-            </form>
+            <CancelFrotaDialog id={manutencao.id} label="Cancelar manutenção" action={cancelManutencao} />
           ) : null}
         </>
       ) : null}
+      {canDelete && manutencao.status === "cancelled" ? <DeleteManutencaoButton id={manutencao.id} nome={`${manutencao.modelo} · ${manutencao.placa}`} /> : null}
     </div>
   );
 }
@@ -620,6 +554,8 @@ function ManutencaoDetails({
         />
       </div>
 
+      {manutencao.status === "cancelled" ? <CancellationDetails date={manutencao.cancelled_at} reason={manutencao.motivo_cancelamento} /> : null}
+
       {manutencao.observacoes || manutencao.anexos.length ? (
         <div className="grid gap-2 sm:grid-cols-2">
           {manutencao.observacoes ? (
@@ -654,9 +590,11 @@ function ManutencaoDetails({
 function EmptyMaintenanceState({
   canCreate,
   veiculos,
+  oficinas,
 }: {
   canCreate: boolean;
   veiculos: Awaited<ReturnType<typeof getManutencoesData>>["veiculos"];
+  oficinas: Awaited<ReturnType<typeof getManutencoesData>>["oficinas"];
 }) {
   return (
     <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border bg-muted/20 p-8 text-center">
@@ -684,7 +622,7 @@ function EmptyMaintenanceState({
             <DialogHeader>
               <DialogTitle>Nova manutenção</DialogTitle>
             </DialogHeader>
-            <ManutencaoForm veiculos={veiculos} />
+            <ManutencaoForm veiculos={veiculos} oficinas={oficinas} />
           </DialogContent>
         </Dialog>
       ) : null}

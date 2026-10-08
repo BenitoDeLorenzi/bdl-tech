@@ -23,7 +23,6 @@ export type VeiculoComboboxOption = {
   modelo: string;
   placa: string;
   quilometragem?: number | null;
-  secretaria?: string | null;
   status?: string | null;
 };
 
@@ -63,7 +62,7 @@ export function VeiculoCombobox({
           veiculo.placa,
           veiculo.modelo,
           veiculo.marca,
-          veiculo.secretaria,
+
           veiculo.combustivel,
         ]
           .filter(Boolean)
@@ -87,7 +86,7 @@ export function VeiculoCombobox({
                     {veiculo.modelo} · {veiculo.placa}
                   </ItemTitle>
                   <ItemDescription>
-                    {[veiculo.marca, veiculo.secretaria || "Sem secretaria"]
+                    {[veiculo.marca]
                       .filter(Boolean)
                       .join(" · ")}
                   </ItemDescription>

@@ -1,5 +1,6 @@
 "use server";
 
+import { updatePostoStatus } from "./cadastro-actions";
 import { pbkdf2Sync, randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -7,23 +8,15 @@ import { redirect } from "next/navigation";
 import { getCurrentUserProfile, requireUserProfile } from "@/lib/auth-data";
 import {
   type FrotaAbastecimento,
-  type ManutencaoStatus,
   type VeiculoStatus,
 } from "@/lib/frotas-data";
 import { hasFrotasPermission } from "@/lib/frotas-permissions";
 import { getPostoSession } from "@/lib/posto-auth";
-import {
-  isPlexiVehicleConsultEnabled,
-  refreshPlexiVehicleConsultResult,
-  requestPlexiVehicleConsult,
-} from "@/lib/plexi";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type FrotaActionState = {
   abastecimento?: FrotaAbastecimento;
   error?: string;
-  plexiConsultaId?: string;
-  processing?: string;
   success?: string;
 };
 
@@ -31,8 +24,6 @@ const allowedStatuses = new Set<VeiculoStatus>([
   "active",
   "maintenance",
   "inactive",
-  "processing",
-  "consult_error",
 ]);
 const vehiclePhotoBucket = "frota-veiculos";
 const vehicleAttachmentBucket = "frota-veiculo-anexos";
@@ -72,116 +63,6 @@ export async function createVeiculo(
   return { success: "Veículo cadastrado com sucesso." };
 }
 
-export async function createVeiculoAutomatico(
-  _previousState: FrotaActionState,
-  formData: FormData
-): Promise<FrotaActionState> {
-  const permissionError = await requireFrotasPermission("vehicles.create");
-
-  if (permissionError) {
-    return { error: permissionError };
-  }
-
-  const prefeituraId = getRequiredValue(formData, "prefeitura_id");
-  const placa = normalizePlate(getRequiredValue(formData, "placa"));
-  const renavam = getRequiredValue(formData, "renavam");
-
-  if (!prefeituraId || !placa || !renavam) {
-    return { error: "Informe prefeitura, placa e Renavam." };
-  }
-
-  if (!isValidPlate(placa)) {
-    return { error: "Informe uma placa brasileira válida." };
-  }
-
-  if (!isValidRenavam(renavam)) {
-    return { error: "Informe um Renavam válido com 11 dígitos." };
-  }
-
-  if (!isPlexiVehicleConsultEnabled()) {
-    return {
-      error:
-        "A consulta automática está desativada. Ative PLEXI_API_ENABLED=true para usar este fluxo.",
-    };
-  }
-
-  if (!process.env.PLEXI_API_TOKEN) {
-    return {
-      error: "Configure PLEXI_API_TOKEN antes de consultar.",
-    };
-  }
-
-  if (!process.env.PLEXI_SECRET_NAME) {
-    return {
-      error:
-        "Configure o identificador do certificado digital antes de usar a consulta automática.",
-    };
-  }
-
-  const supabase = createSupabaseServerClient();
-  const { data: existingVehicle, error: existingVehicleError } = await supabase
-    .from("frota_veiculos")
-    .select("id")
-    .eq("prefeitura_id", prefeituraId)
-    .eq("placa", placa)
-    .maybeSingle();
-
-  if (existingVehicleError) {
-    return { error: formatSupabaseError(existingVehicleError.message) };
-  }
-
-  if (existingVehicle) {
-    return { error: "Já existe um veículo cadastrado com esta placa." };
-  }
-
-  const currentYear = new Date().getFullYear();
-  const { data, error } = await supabase
-    .from("frota_veiculos")
-    .insert({
-      ano: currentYear,
-      ano_fabricacao: null,
-      ano_modelo: currentYear,
-      combustivel: "Aguardando consulta",
-      marca: "Aguardando consulta",
-      modelo: "Aguardando consulta",
-      origem_dados: "Consulta automática",
-      placa,
-      prefeitura_id: prefeituraId,
-      renavam,
-      status: "processing" satisfies VeiculoStatus,
-      tipo: "Automovel",
-    })
-    .select("id")
-    .single();
-
-  if (error || !data) {
-    return { error: formatSupabaseError(error?.message ?? "Veículo não criado.") };
-  }
-
-  const consultResult = await requestPlexiVehicleConsult(supabase, {
-    licensePlate: placa,
-    prefeituraId,
-    renavam,
-    veiculoId: data.id,
-  });
-
-  revalidatePath("/frotas");
-  revalidatePath("/frotas/veiculos");
-
-  if (consultResult.error) {
-    await supabase.from("frota_veiculos").delete().eq("id", data.id);
-
-    return {
-      error: consultResult.error,
-    };
-  }
-
-  return {
-    success:
-      "Veículo cadastrado como processando. Os dados serão atualizados quando a consulta automática finalizar.",
-  };
-}
-
 export async function updateVeiculo(
   _previousState: FrotaActionState,
   formData: FormData
@@ -205,27 +86,20 @@ export async function updateVeiculo(
   }
 
   const supabase = createSupabaseServerClient();
-  const { data: currentVehicle, error: currentVehicleError } = await supabase
-    .from("frota_veiculos")
-    .select("status")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (currentVehicleError) {
-    return { error: formatSupabaseError(currentVehicleError.message) };
+  const currentVehicle = await supabase.from("frota_veiculos").select("id,status,prefeitura_id").eq("id", id).maybeSingle();
+  if (currentVehicle.error || !currentVehicle.data) return { error: "Veículo não encontrado." };
+  const profile = await requireUserProfile();
+  if (profile.role !== "bdl_admin" && (currentVehicle.data.prefeitura_id !== profile.prefeitura_id || payload.veiculo.prefeitura_id !== profile.prefeitura_id)) {
+    return { error: "Você não tem acesso ao veículo desta empresa." };
   }
-
-  if (currentVehicle?.status === "processing") {
-    return {
-      error:
-        "Aguarde a consulta automática terminar antes de editar este veículo.",
-    };
+  if (currentVehicle.data.status === "processing") {
+    return { error: "Aguarde o retorno da consulta antes de concluir o cadastro." };
   }
-
   const { error } = await supabase
     .from("frota_veiculos")
     .update(payload.veiculo)
-    .eq("id", id);
+    .eq("id", id)
+    .neq("status", "processing");
 
   if (error) {
     return { error: formatSupabaseError(error.message) };
@@ -236,6 +110,10 @@ export async function updateVeiculo(
 }
 
 export async function deleteVeiculo(formData: FormData) {
+  const profile = await requireUserProfile();
+  if (profile.role !== "bdl_admin") {
+    redirect(`/frotas/veiculos?error=${encodeURIComponent("Somente o usuário Master pode excluir veículos.")}`);
+  }
   const permissionError = await requireFrotasPermission("vehicles.delete");
 
   if (permissionError) {
@@ -261,14 +139,6 @@ export async function deleteVeiculo(formData: FormData) {
         .select("file_path")
         .eq("veiculo_id", id),
     ]);
-
-  if (veiculoResult.data?.status === "processing") {
-    redirect(
-      `/frotas/veiculos?error=${encodeURIComponent(
-        "Aguarde a consulta automática terminar antes de excluir este veículo."
-      )}`
-    );
-  }
 
   if (veiculoResult.error || !veiculoResult.data) {
     redirect(
@@ -618,62 +488,6 @@ export async function updateVeiculoStatus(
   revalidatePath("/frotas");
   revalidatePath("/frotas/veiculos");
   return { success: "Status do veículo atualizado com sucesso." };
-}
-
-export async function syncVeiculoConsultaAutomatica(formData: FormData) {
-  const permissionError = await requireFrotasPermission("vehicles.update");
-
-  if (permissionError) {
-    redirect(`/frotas/veiculos?error=${encodeURIComponent(permissionError)}`);
-  }
-
-  const id = getRequiredValue(formData, "id");
-
-  if (!id) {
-    redirect("/frotas/veiculos?error=Ve%C3%ADculo%20n%C3%A3o%20encontrado.");
-  }
-
-  const supabase = createSupabaseServerClient();
-  const { data: consulta, error } = await supabase
-    .from("frota_debito_consultas")
-    .select("id")
-    .eq("provider", "plexi")
-    .eq("veiculo_id", id)
-    .not("id_consult", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !consulta) {
-    redirect(
-      `/frotas/veiculos?error=${encodeURIComponent(
-        error?.message ?? "Consulta automática não encontrada."
-      )}`
-    );
-  }
-
-  const result = await refreshPlexiVehicleConsultResult(supabase, consulta.id);
-
-  revalidatePath("/frotas");
-  revalidatePath("/frotas/veiculos");
-
-  if (result.status === "success") {
-    redirect("/frotas/veiculos?updated=1");
-  }
-
-  if (result.status === "processing") {
-    redirect(
-      `/frotas/veiculos?error=${encodeURIComponent(
-        "A consulta ainda está processando. Tente novamente em alguns instantes."
-      )}`
-    );
-  }
-
-  redirect(
-    `/frotas/veiculos?error=${encodeURIComponent(
-      result.error ?? "Não foi possível sincronizar a consulta automática."
-    )}`
-  );
 }
 
 export async function registrarPagamentoVencimento(
@@ -1032,7 +846,8 @@ export async function createAbastecimento(
   const dataAbastecimento = getRequiredValue(formData, "data_abastecimento");
   const motorista = getRequiredValue(formData, "motorista");
   const postoId = getRequiredValue(formData, "posto_id");
-  const emitidoPor = getRequiredValue(formData, "emitido_por");
+  const profile = await requireUserProfile();
+  const emitidoPor = profile.nome;
   const combustivel = getRequiredValue(formData, "combustivel");
   const arlaIncluso = getOptionalValue(formData, "arla_incluso") === "true";
   const observacoes = getOptionalValue(formData, "observacoes");
@@ -1063,6 +878,10 @@ export async function createAbastecimento(
     };
   }
 
+  if (profile.role !== "bdl_admin" && veiculo.prefeitura_id !== profile.prefeitura_id) {
+    return { error: "Este veículo não pertence à sua empresa." };
+  }
+
   const { data: posto, error: postoError } = await supabase
     .from("frota_postos_credenciados")
     .select("id,nome,prefeitura_id,status")
@@ -1076,7 +895,7 @@ export async function createAbastecimento(
   }
 
   if (posto.prefeitura_id !== veiculo.prefeitura_id || posto.status !== "active") {
-    return { error: "Selecione um posto credenciado ativo da prefeitura." };
+    return { error: "Selecione um posto credenciado ativo da empresa." };
   }
 
   if (arlaIncluso && !isDieselFuel(combustivel)) {
@@ -1327,14 +1146,15 @@ export async function cancelAbastecimento(
   const id = getRequiredValue(formData, "id");
   const motivoCancelamento = getRequiredValue(formData, "motivo_cancelamento");
 
-  if (!id || !motivoCancelamento) {
-    return { error: "Informe o motivo do cancelamento." };
+  if (!id || motivoCancelamento.length < 8) {
+    return { error: "Descreva o motivo com pelo menos 8 caracteres." };
   }
 
+  const profile = await requireUserProfile();
   const supabase = createSupabaseServerClient();
   const { data: abastecimento, error: abastecimentoError } = await supabase
     .from("frota_abastecimentos")
-    .select("id,status,expires_at")
+    .select("id,prefeitura_id,status,expires_at")
     .eq("id", id)
     .single();
 
@@ -1346,6 +1166,10 @@ export async function cancelAbastecimento(
     };
   }
 
+  if (profile.role !== "bdl_admin" && abastecimento.prefeitura_id !== profile.prefeitura_id) {
+    return { error: "Este registro não pertence à sua empresa." };
+  }
+
   if (abastecimento.status !== "issued" || isExpiredAt(abastecimento.expires_at)) {
     if (abastecimento.status === "issued") {
       await markAbastecimentoAsExpired(supabase, abastecimento.id);
@@ -1355,7 +1179,7 @@ export async function cancelAbastecimento(
     return { error: "Somente ordens pendentes podem ser canceladas." };
   }
 
-  const { error } = await supabase
+  const { data: cancelled, error } = await supabase
     .from("frota_abastecimentos")
     .update({
       cancelled_at: new Date().toISOString(),
@@ -1363,10 +1187,10 @@ export async function cancelAbastecimento(
       status: "cancelled",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id).eq("prefeitura_id", abastecimento.prefeitura_id).eq("status", "issued").select("id").maybeSingle();
 
-  if (error) {
-    return { error: formatSupabaseError(error.message) };
+  if (error || !cancelled) {
+    return { error: error ? formatSupabaseError(error.message) : "Atualize a lista e tente novamente." };
   }
 
   revalidatePath("/frotas");
@@ -1448,7 +1272,7 @@ export async function createPostoCredenciado(
   const telefone = getOptionalValue(formData, "telefone");
 
   if (!prefeituraId || !nome || !cnpj || !senha) {
-    return { error: "Informe prefeitura, nome, CNPJ e senha do posto." };
+    return { error: "Informe empresa, nome, CNPJ e senha do posto." };
   }
 
   if (cnpj.length !== 14) {
@@ -1491,7 +1315,7 @@ export async function updatePostoCredenciado(
   const telefone = getOptionalValue(formData, "telefone");
 
   if (!id || !prefeituraId || !nome || !cnpj) {
-    return { error: "Informe prefeitura, nome e CNPJ do posto." };
+    return { error: "Informe empresa, nome e CNPJ do posto." };
   }
 
   if (cnpj.length !== 14) {
@@ -1554,38 +1378,10 @@ export async function resetPostoCredenciadoSenha(
 }
 
 export async function updatePostoCredenciadoStatus(
-  _previousState: FrotaActionState,
+  previousState: FrotaActionState,
   formData: FormData
 ): Promise<FrotaActionState> {
-  const id = getRequiredValue(formData, "id");
-  const status = getRequiredValue(formData, "status");
-
-  if (!id || !["active", "inactive"].includes(status)) {
-    return { error: "Status do posto inválido." };
-  }
-
-  const supabase = createSupabaseServerClient();
-  const { error } = await supabase
-    .from("frota_postos_credenciados")
-    .update({
-      status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-
-  if (error) {
-    return { error: formatSupabaseError(error.message) };
-  }
-
-  revalidatePath("/frotas/abastecimento");
-  revalidatePath("/frotas/posto");
-  revalidatePath("/frotas/postos");
-  return {
-    success:
-      status === "active"
-        ? "Posto ativado com sucesso."
-        : "Posto inativado com sucesso.",
-  };
+  return updatePostoStatus(previousState, formData);
 }
 
 export async function createManutencao(
@@ -1602,7 +1398,8 @@ export async function createManutencao(
   const tipo = getRequiredValue(formData, "tipo");
   const descricao = getRequiredValue(formData, "descricao");
   const dataEntrada = getRequiredValue(formData, "data_entrada");
-  const oficina = getOptionalValue(formData, "oficina");
+  const oficinaId = getOptionalValue(formData, "oficina_id");
+  const profile = await requireUserProfile();
   const responsavel = getOptionalValue(formData, "responsavel");
   const observacoes = getOptionalValue(formData, "observacoes");
   const valor = parseCurrencyValue(getRequiredValue(formData, "valor"));
@@ -1627,13 +1424,18 @@ export async function createManutencao(
     };
   }
 
+  if (profile.role !== "bdl_admin" && veiculo.prefeitura_id !== profile.prefeitura_id) return { error: "Este veículo não pertence à sua empresa." };
+  const selectedOficina = await resolveMaintenanceWorkshop(supabase, oficinaId, veiculo.prefeitura_id);
+  if ("error" in selectedOficina) return selectedOficina;
+
   const { data: manutencao, error } = await supabase
     .from("frota_manutencoes")
     .insert({
       data_entrada: dataEntrada,
       descricao,
       observacoes,
-      oficina,
+      oficina: selectedOficina.nome,
+      oficina_id: selectedOficina.id,
       prefeitura_id: veiculo.prefeitura_id,
       quilometragem: quilometragem || null,
       responsavel,
@@ -1678,85 +1480,9 @@ export async function createManutencao(
   return { success: "Manutenção registrada com sucesso." };
 }
 
-export async function updateManutencao(
-  _previousState: FrotaActionState,
-  formData: FormData
-): Promise<FrotaActionState> {
-  const permissionError = await requireFrotasPermission("maintenance.update");
-
-  if (permissionError) {
-    return { error: permissionError };
-  }
-
-  const id = getRequiredValue(formData, "id");
-  const veiculoId = getRequiredValue(formData, "veiculo_id");
-  const tipo = getRequiredValue(formData, "tipo");
-  const descricao = getRequiredValue(formData, "descricao");
-  const dataEntrada = getRequiredValue(formData, "data_entrada");
-  const oficina = getOptionalValue(formData, "oficina");
-  const responsavel = getOptionalValue(formData, "responsavel");
-  const observacoes = getOptionalValue(formData, "observacoes");
-  const valor = parseCurrencyValue(getRequiredValue(formData, "valor"));
-  const quilometragem = Number(getOptionalValue(formData, "quilometragem") ?? 0);
-
-  if (!id || !veiculoId || !tipo || !descricao || !dataEntrada) {
-    return { error: "Preencha os campos obrigatórios da manutenção." };
-  }
-
-  const supabase = createSupabaseServerClient();
-  const { data: manutencao, error: manutencaoError } = await supabase
-    .from("frota_manutencoes")
-    .select("id,prefeitura_id,veiculo_id")
-    .eq("id", id)
-    .single();
-
-  if (manutencaoError || !manutencao) {
-    return {
-      error: formatSupabaseError(
-        manutencaoError?.message ?? "Manutenção não encontrada."
-      ),
-    };
-  }
-
-  if (manutencao.veiculo_id !== veiculoId) {
-    return { error: "Não é possível alterar o veículo da manutenção." };
-  }
-
-  const { error } = await supabase
-    .from("frota_manutencoes")
-    .update({
-      data_entrada: dataEntrada,
-      descricao,
-      observacoes,
-      oficina,
-      quilometragem: quilometragem || null,
-      responsavel,
-      tipo,
-      updated_at: new Date().toISOString(),
-      valor: valor || null,
-    })
-    .eq("id", id);
-
-  if (error) {
-    return { error: formatSupabaseError(error.message) };
-  }
-
-  const attachmentError = await uploadMaintenanceAttachments({
-    formData,
-    manutencaoId: manutencao.id,
-    prefeituraId: manutencao.prefeitura_id,
-    supabase,
-    veiculoId: manutencao.veiculo_id,
-  });
-
-  if (attachmentError) {
-    return { error: attachmentError };
-  }
-
-  revalidatePath("/frotas");
-  revalidatePath("/frotas/veiculos");
-  revalidatePath("/frotas/manutencao");
-  return { success: "Manutenção atualizada com sucesso." };
+export async function updateManutencao(): Promise<FrotaActionState> {
+  await requireUserProfile();
+  return { error: "Manutenções não podem ser editadas. Cancele a manutenção e registre uma nova." };
 }
 
 export async function finishManutencao(
@@ -1948,56 +1674,34 @@ export async function deleteManutencaoAnexo(
   return { success: "Documento removido com sucesso." };
 }
 
-export async function cancelManutencao(formData: FormData) {
-  const permissionError = await requireFrotasPermission("maintenance.cancel");
-
-  if (permissionError) {
-    redirect(`/frotas/manutencao?error=${encodeURIComponent(permissionError)}`);
-  }
-
+export async function cancelManutencao(_previousState: FrotaActionState, formData: FormData): Promise<FrotaActionState> {
+  const profile = await requireUserProfile();
+  const allowed = await hasFrotasPermission(profile, "maintenance.cancel");
+  if (!allowed) return { error: "Você não tem permissão para cancelar este registro." };
   const id = getRequiredValue(formData, "id");
+  const motivo = getRequiredValue(formData, "motivo_cancelamento");
+  if (!id || motivo.length < 8) return { error: "Descreva o motivo com pelo menos 8 caracteres." };
   const supabase = createSupabaseServerClient();
-  const { data: manutencao, error: manutencaoError } = await supabase
-    .from("frota_manutencoes")
-    .select("id,veiculo_id")
-    .eq("id", id)
-    .single();
-
-  if (manutencaoError || !manutencao) {
-    redirect(
-      `/frotas/manutencao?error=${encodeURIComponent(
-        formatSupabaseError(
-          manutencaoError?.message ?? "Manutenção não encontrada."
-        )
-      )}`
-    );
+  const { data: registro, error: readError } = await supabase.from("frota_manutencoes")
+    .select("id,prefeitura_id,status,veiculo_id").eq("id", id).single();
+  if (readError || !registro) return { error: "Registro não encontrado." };
+  if (profile.role !== "bdl_admin" && registro.prefeitura_id !== profile.prefeitura_id)
+    return { error: "Este registro não pertence à sua empresa." };
+  if (registro.status !== "open") return { error: "Somente registros abertos podem ser cancelados." };
+  const now = new Date().toISOString();
+  const { data: cancelled, error } = await supabase.from("frota_manutencoes")
+    .update({ status: "cancelled", motivo_cancelamento: motivo, cancelled_at: now, updated_at: now })
+    .eq("id", id).eq("prefeitura_id", registro.prefeitura_id).eq("status", "open").select("id").maybeSingle();
+  if (error || !cancelled) return { error: "Não foi possível cancelar. Atualize a lista e tente novamente." };
+  const { data: openMaintenance, error: openError } = await supabase.from("frota_manutencoes")
+    .select("id").eq("veiculo_id", registro.veiculo_id).eq("status", "open").limit(1);
+  if (!openError && openMaintenance?.length === 0) {
+    await supabase.from("frota_veiculos").update({ status: "active" }).eq("id", registro.veiculo_id).eq("status", "maintenance");
   }
-
-  const { error } = await supabase
-    .from("frota_manutencoes")
-    .update({
-      status: "cancelled" satisfies ManutencaoStatus,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-
-  if (error) {
-    redirect(
-      `/frotas/manutencao?error=${encodeURIComponent(
-        formatSupabaseError(error.message)
-      )}`
-    );
-  }
-
-  await supabase
-    .from("frota_veiculos")
-    .update({ status: "active" })
-    .eq("id", manutencao.veiculo_id);
-
   revalidatePath("/frotas");
   revalidatePath("/frotas/veiculos");
   revalidatePath("/frotas/manutencao");
-  redirect("/frotas/manutencao?cancelled=1");
+  return { success: "Cancelamento registrado com sucesso." };
 }
 
 function getVeiculoPayload(formData: FormData) {
@@ -2216,7 +1920,7 @@ async function getAbastecimentoForPrint(id: string): Promise<FrotaAbastecimento>
   const { data, error } = await supabase
     .from("frota_abastecimentos")
     .select(
-      "id,prefeitura_id,veiculo_id,posto_id,numero_ordem,data_abastecimento,motorista,fornecedor,combustivel,quilometragem,litros,valor_litro,valor_total,arla_incluso,arla_litros,arla_valor_litro,arla_valor_total,status,observacoes,emitido_por,expires_at,concluido_por,numero_nota_fiscal,completed_at,created_at,print_count,last_printed_at,motivo_cancelamento,cancelled_at,frota_veiculos(placa,marca,modelo,ano,renavam,secretaria,prefeituras(nome,brasao_url)),frota_postos_credenciados(nome)"
+      "id,prefeitura_id,veiculo_id,posto_id,numero_ordem,data_abastecimento,motorista,fornecedor,combustivel,quilometragem,litros,valor_litro,valor_total,arla_incluso,arla_litros,arla_valor_litro,arla_valor_total,status,observacoes,emitido_por,expires_at,concluido_por,numero_nota_fiscal,completed_at,created_at,print_count,last_printed_at,motivo_cancelamento,cancelled_at,frota_veiculos(placa,marca,modelo,ano,renavam,secretaria,prefeituras:empresas(nome,brasao_url)),frota_postos_credenciados(nome)"
     )
     .eq("id", id)
     .single();
@@ -2248,7 +1952,8 @@ async function getAbastecimentoForPrint(id: string): Promise<FrotaAbastecimento>
       placa: string;
       prefeituras: { brasao_url: string | null; nome: string } | null;
       renavam: string | null;
-      secretaria: string;
+      /** Valor legado usado somente na reprodução de relatórios históricos. */
+      secretaria: string | null;
     } | null;
     id: string;
     last_printed_at: string | null;
@@ -2732,42 +2437,14 @@ function formatSupabaseError(message: string) {
     message.includes("frota_abastecimento_anexos") ||
     message.includes("frota_abastecimentos") ||
     message.includes("frota_postos_credenciados") ||
-    message.includes("frota_secretarias") ||
     message.includes("frota_veiculo_anexos") ||
     message.includes("frota_veiculos") ||
     message.includes("frota_vencimentos")
   ) {
-    return "Rode a migration de Frotas Públicas no Supabase antes de gerenciar veículos.";
+    return "Rode a migration de Vibe Frotas no Supabase antes de gerenciar veículos.";
   }
 
   return message;
-}
-
-async function validateSecretaria(
-  supabase: ReturnType<typeof createSupabaseServerClient>,
-  prefeituraId: string,
-  secretaria: string
-) {
-  const { data, error } = await supabase
-    .from("frota_secretarias")
-    .select("id,status")
-    .eq("prefeitura_id", prefeituraId)
-    .eq("nome", secretaria)
-    .maybeSingle();
-
-  if (error) {
-    return formatSupabaseError(error.message);
-  }
-
-  if (!data) {
-    return "Selecione uma secretaria cadastrada para esta prefeitura.";
-  }
-
-  if (data.status !== "active") {
-    return "Selecione uma secretaria ativa.";
-  }
-
-  return null;
 }
 
 async function requireFrotasPermission(permission: string) {
@@ -2814,4 +2491,16 @@ async function requireFuelCompletePermission(abastecimentoId: string) {
   }
 
   return null;
+}
+
+async function resolveMaintenanceWorkshop(
+  supabase: ReturnType<typeof createSupabaseServerClient>,
+  id: string | null,
+  empresaId: string
+) {
+  if (!id) return { error: "Selecione uma oficina cadastrada." };
+  const { data, error } = await supabase.from("frota_oficinas")
+    .select("id,nome").eq("id", id).eq("prefeitura_id", empresaId).eq("status", "active").maybeSingle();
+  if (error || !data) return { error: "Selecione uma oficina ativa da empresa do veículo." };
+  return { id: data.id as string, nome: data.nome as string };
 }

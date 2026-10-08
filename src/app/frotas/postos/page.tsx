@@ -1,3 +1,6 @@
+import { DeleteCadastroButton } from "@/components/delete-cadastro-button";
+import { deletePosto, updatePostoStatus } from "../cadastro-actions";
+import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
 import {
   Building2,
@@ -15,13 +18,12 @@ import {
 import { FrotasShell } from "@/app/frotas/frotas-shell";
 import { PostoCredenciadoForm } from "@/app/frotas/posto-credenciado-form";
 import { PostoSenhaForm } from "@/app/frotas/posto-senha-form";
-import { PostoStatusButton } from "@/app/frotas/posto-status-button";
+import { CadastroStatusButton } from "@/components/cadastro-status-button";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -154,12 +156,13 @@ export default async function PostosPage({ searchParams }: PageProps) {
                 </div>
                 <div>
                   <CardTitle>Postos cadastrados</CardTitle>
-                  <CardDescription>
-                    Acessos dos postos credenciados para concluir ordens.
-                  </CardDescription>
                 </div>
               </div>
-              <Badge variant="outline">{data.postos.length} registro(s)</Badge>
+              <ListMetrics
+                items={[
+                  { label: "Total", value: data.postos.length },
+                ]}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -170,7 +173,7 @@ export default async function PostosPage({ searchParams }: PageProps) {
                     <TableRow className="bg-muted/50">
                       <TableHead>Posto</TableHead>
                       <TableHead>Contato</TableHead>
-                      <TableHead>Prefeitura</TableHead>
+                      <TableHead>Empresa</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="w-[160px] text-right">
                         Ações
@@ -204,6 +207,7 @@ export default async function PostosPage({ searchParams }: PageProps) {
                         </TableCell>
                         <TableCell>
                           <PostoActions
+                            canDelete={profile.role === "bdl_admin"}
                             posto={posto}
                             prefeituras={data.prefeituras}
                             selectedPrefeituraId={data.selectedPrefeituraId}
@@ -224,7 +228,7 @@ export default async function PostosPage({ searchParams }: PageProps) {
                   Nenhum posto cadastrado
                 </h3>
                 <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                  Cadastre os postos credenciados da prefeitura para permitir a
+                  Cadastre os postos credenciados da empresa para permitir a
                   conclusão das ordens de abastecimento.
                 </p>
               </div>
@@ -237,11 +241,13 @@ export default async function PostosPage({ searchParams }: PageProps) {
 }
 
 function PostoActions({
+  canDelete,
   posto,
   prefeituras,
   selectedPrefeituraId,
   showPrefeituraField,
 }: {
+  canDelete: boolean;
   posto: Awaited<ReturnType<typeof getPostosCredenciadosData>>["postos"][number];
   prefeituras: Awaited<ReturnType<typeof getPostosCredenciadosData>>["prefeituras"];
   selectedPrefeituraId?: string;
@@ -318,7 +324,8 @@ function PostoActions({
         <ExternalLink className="size-4" />
       </Link>
 
-      <PostoStatusButton postoId={posto.id} status={posto.status} />
+      <CadastroStatusButton id={posto.id} status={posto.status} entity="posto" action={updatePostoStatus} />
+      {canDelete ? <DeleteCadastroButton id={posto.id} nome={posto.nome} entity="posto" action={deletePosto} /> : null}
     </div>
   );
 }

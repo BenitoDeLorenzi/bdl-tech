@@ -1,7 +1,9 @@
+import { DeleteCadastroButton } from "@/components/delete-cadastro-button";
+import { deleteMotorista } from "../cadastro-actions";
+import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  BadgeCheck,
   CalendarClock,
   CircleCheck,
   CircleX,
@@ -19,7 +21,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -32,7 +33,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { HeaderSeparator } from "@/components/header-separator";
 import {
   Table,
   TableBody,
@@ -57,7 +58,8 @@ import {
   type MotoristaStatus,
 } from "@/lib/motoristas-data";
 import { MotoristaForm } from "./motorista-form";
-import { MotoristaStatusButton } from "./motorista-status-button";
+import { CadastroStatusButton } from "@/components/cadastro-status-button";
+import { updateMotoristaStatus } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -150,16 +152,15 @@ export default async function MotoristasPage({ searchParams }: PageProps) {
                 </div>
                 <div>
                   <CardTitle>Motoristas cadastrados</CardTitle>
-                  <CardDescription>
-                    Cadastro consolidado apenas para pessoas com CPF informado.
-                  </CardDescription>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <MetricBadge label="Ativos" value={data.metricas.ativos} />
-                <MetricBadge label="Em uso" value={data.metricas.emUso} />
-                <MetricBadge label="Total" value={data.metricas.total} />
-              </div>
+              <ListMetrics
+                items={[
+                  { label: "Ativos", value: data.metricas.ativos, tone: "success" },
+                  { label: "Em uso", value: data.metricas.emUso, tone: "inUse" },
+                  { label: "Total", value: data.metricas.total },
+                ]}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -169,7 +170,7 @@ export default async function MotoristasPage({ searchParams }: PageProps) {
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead>Motorista</TableHead>
-                      <TableHead>Prefeitura</TableHead>
+                      <TableHead>Empresa</TableHead>
                       <TableHead>Histórico</TableHead>
                       <TableHead>Situação</TableHead>
                       <TableHead>Status</TableHead>
@@ -222,6 +223,7 @@ export default async function MotoristasPage({ searchParams }: PageProps) {
                         </TableCell>
                         <TableCell>
                           <MotoristaActions
+                            canDelete={profile.role === "bdl_admin"}
                             access={access}
                             motorista={motorista}
                             prefeituras={data.prefeituras}
@@ -332,7 +334,7 @@ function MotoristasToolbar({
         })}
       </div>
 
-      <Separator orientation="vertical" className="hidden h-5 xl:block" />
+      {access.canManageMotoristas ? <HeaderSeparator className="hidden xl:block" /> : null}
 
       {access.canManageMotoristas ? (
         <Dialog>
@@ -361,12 +363,14 @@ function MotoristasToolbar({
 }
 
 function MotoristaActions({
+  canDelete,
   access,
   motorista,
   prefeituras,
   selectedPrefeituraId,
   showPrefeituraField,
 }: {
+  canDelete: boolean;
   access: Awaited<ReturnType<typeof getFrotasPermissionAccess>>;
   motorista: FrotaMotorista;
   prefeituras: Awaited<ReturnType<typeof getMotoristasData>>["prefeituras"];
@@ -433,12 +437,10 @@ function MotoristaActions({
             </DialogContent>
           </Dialog>
 
-          <MotoristaStatusButton
-            motoristaId={motorista.id}
-            status={motorista.status}
-          />
+          <CadastroStatusButton id={motorista.id} status={motorista.status} entity="motorista" action={updateMotoristaStatus} />
         </>
       ) : null}
+      {canDelete ? <DeleteCadastroButton id={motorista.id} nome={motorista.nome} entity="motorista" action={deleteMotorista} /> : null}
     </div>
   );
 }
@@ -483,7 +485,7 @@ function MotoristaDetails({ motorista }: { motorista: FrotaMotorista }) {
             <CompactDetail label="Nome" value={motorista.nome} />
             <CompactDetail label="CPF" value={formatCpf(motorista.cpf)} />
             <CompactDetail
-              label="Prefeitura"
+              label="Empresa"
               value={motorista.prefeitura_nome}
             />
             <CompactDetail
@@ -587,16 +589,6 @@ function MotoristaStatusBadge({ status }: { status: MotoristaStatus }) {
         <CircleX className="size-3.5" />
       )}
       {formatMotoristaStatus(status)}
-    </Badge>
-  );
-}
-
-function MetricBadge({ label, value }: { label: string; value: number }) {
-  return (
-    <Badge variant="outline" className="h-8 gap-1.5 rounded-lg px-3">
-      <BadgeCheck className="size-3.5 text-muted-foreground" />
-      <span className="font-semibold">{value}</span>
-      <span className="text-muted-foreground">{label}</span>
     </Badge>
   );
 }

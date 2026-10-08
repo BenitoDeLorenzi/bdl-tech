@@ -1,15 +1,15 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useRef, useState } from "react";
+import { FormDialogCancel } from "@/components/form-dialog-cancel";
+
+import { startTransition, useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import {
+  ArrowLeft,
   AlertCircle,
   CheckCircle2,
-  ClipboardList,
   Loader2,
-  SearchCheck,
-  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,13 +37,14 @@ import {
   type FrotaVeiculo,
   type VeiculoStatus,
 } from "@/lib/frotas-data";
-import { createVeiculo, createVeiculoAutomatico, updateVeiculo } from "./actions";
+import { createVeiculo, updateVeiculo } from "./actions";
 
 type VeiculoFormProps = {
   prefeituras: FrotaPrefeituraOption[];
-  secretarias?: unknown[];
   selectedPrefeituraId?: string;
   showPrefeituraField?: boolean;
+  initialValues?: Partial<VeiculoFormValues>;
+  onBack?: () => void;
   veiculo?: FrotaVeiculo;
 };
 
@@ -111,24 +112,24 @@ export function VeiculoForm({
   prefeituras,
   selectedPrefeituraId,
   showPrefeituraField = true,
+  initialValues,
+  onBack,
   veiculo,
 }: VeiculoFormProps) {
   const isEditing = Boolean(veiculo);
-  const [createMode, setCreateMode] = useState<"choice" | "manual" | "automatic">(
-    isEditing ? "manual" : "choice"
-  );
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, actionPending] = useActionState(
     isEditing ? updateVeiculo : createVeiculo,
     {}
   );
-  const [automaticState, automaticFormAction, automaticPending] = useActionState(
-    createVeiculoAutomatico,
-    {}
-  );
   const form = useForm<VeiculoFormValues>({
-    defaultValues: getDefaultValues(veiculo, selectedPrefeituraId),
+    defaultValues: {
+      ...getDefaultValues(veiculo, selectedPrefeituraId),
+      ...initialValues,
+      prefeitura_id:
+        initialValues?.prefeitura_id ?? veiculo?.prefeitura_id ?? selectedPrefeituraId ?? null,
+    },
   });
 
   useEffect(() => {
@@ -145,17 +146,6 @@ export function VeiculoForm({
       closeParentDialog(formRef.current);
     }
   }, [form, isEditing, router, selectedPrefeituraId, state.success]);
-
-  useEffect(() => {
-    if (automaticState.success) {
-      toast.success(automaticState.success, {
-        id: "veiculo-auto-create-success",
-      });
-      router.refresh();
-      form.reset(getDefaultValues(undefined, selectedPrefeituraId));
-      closeParentDialog(formRef.current);
-    }
-  }, [automaticState.success, form, router, selectedPrefeituraId]);
 
   function submitForm(values: VeiculoFormValues) {
     const formData = new FormData();
@@ -195,137 +185,8 @@ export function VeiculoForm({
     });
   }
 
-  function submitAutomaticForm(values: VeiculoFormValues) {
-    const formData = new FormData();
-
-    formData.set("prefeitura_id", values.prefeitura_id ?? "");
-    formData.set("renavam", values.renavam);
-    formData.set("placa", values.placa);
-
-    startTransition(() => {
-      automaticFormAction(formData);
-    });
-  }
-
-  if (!isEditing && createMode === "choice") {
-    return (
-      <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setCreateMode("manual")}
-            className="group h-auto min-h-36 flex-col items-start justify-between gap-4 whitespace-normal rounded-xl p-4 text-left transition-all hover:border-foreground/30 hover:bg-muted/40"
-          >
-            <div className="flex w-full items-start justify-between gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg border bg-background transition-colors group-hover:bg-muted">
-                <ClipboardList className="size-5" />
-              </div>
-            </div>
-            <div>
-              <div className="font-medium">Cadastro manual</div>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                Preencha os dados do documento do veículo sem consultar API externa.
-              </p>
-            </div>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setCreateMode("automatic")}
-            className="group h-auto min-h-36 flex-col items-start justify-between gap-4 whitespace-normal rounded-xl p-4 text-left transition-all hover:border-foreground/30 hover:bg-muted/40"
-          >
-            <div className="flex w-full items-start justify-between gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg border bg-background transition-colors group-hover:bg-muted">
-                <SearchCheck className="size-5" />
-              </div>
-              <span className="rounded-full bg-sky-100 px-2 py-1 text-xs font-medium text-sky-800">
-                Mais rápido
-              </span>
-            </div>
-            <div>
-              <div className="font-medium">Consulta automática</div>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                Informe placa e Renavam para buscar os dados do veículo.
-              </p>
-            </div>
-          </Button>
-        </div>
-        <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0" />
-          <span>
-            A consulta automática fica bloqueada até a integração estar habilitada,
-            evitando chamadas repetidas durante o cadastro.
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isEditing && createMode === "automatic") {
-    const automaticBusy = automaticPending;
-
-    return (
-      <form
-        ref={formRef}
-        onSubmit={form.handleSubmit(submitAutomaticForm)}
-        className="space-y-3"
-        noValidate
-      >
-        {automaticState.error ? (
-          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            <span>{automaticState.error}</span>
-          </div>
-        ) : null}
-
-        <fieldset disabled={automaticBusy} className="disabled:opacity-70">
-          <FieldGroup className="gap-3">
-            {showPrefeituraField ? (
-              <Controller
-                control={form.control}
-                name="prefeitura_id"
-                rules={{ required: "Selecione a prefeitura." }}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="prefeitura_id_auto">Prefeitura</FieldLabel>
-                    <PrefeituraCombobox
-                      id="prefeitura_id_auto"
-                      value={field.value}
-                      onChange={field.onChange}
-                      prefeituras={prefeituras}
-                      disabled={automaticBusy}
-                      invalid={fieldState.invalid}
-                    />
-                    <FieldError errors={[fieldState.error]} />
-                  </Field>
-                )}
-              />
-            ) : null}
-
-            <div className="grid gap-3 sm:grid-cols-12">
-              <TextField className="sm:col-span-6" control={form.control} disabled={automaticBusy} label="Placa" maxLength={7} name="placa" rules={{ pattern: { value: /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/, message: "Informe uma placa brasileira válida." }, required: "Informe a placa." }} transform={formatPlateInput} />
-              <TextField className="sm:col-span-6" control={form.control} disabled={automaticBusy} label="Renavam" maxLength={11} name="renavam" rules={{ pattern: { value: /^\d{11}$/, message: "Informe o Renavam com 11 dígitos." }, required: "Informe o Renavam." }} transform={(value) => onlyDigits(value).slice(0, 11)} />
-            </div>
-          </FieldGroup>
-        </fieldset>
-
-        <DialogFooter className="gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={automaticBusy}
-            onClick={() => setCreateMode("choice")}
-          >
-            Voltar
-          </Button>
-          <Button type="submit" className="gap-2" disabled={automaticBusy}>
-            {automaticBusy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-            {automaticBusy ? "Consultando..." : "Cadastrar e consultar"}
-          </Button>
-        </DialogFooter>
-      </form>
-    );
+  if (veiculo?.status === "processing") {
+    return <div className="rounded-lg border bg-muted/40 p-4 text-sm" role="status">A consulta está em andamento. Aguarde o resultado da Plexi para conferir e finalizar o cadastro.</div>;
   }
 
   return (
@@ -335,6 +196,13 @@ export function VeiculoForm({
       className="space-y-3"
       noValidate
     >
+      {veiculo?.status === "consult_error" ? (
+        <div className="rounded-lg border bg-muted/40 p-3 text-sm" role="status">
+          {veiculo.consulta_status === "error"
+            ? veiculo.consulta_mensagem ?? "A consulta falhou. Preencha os dados para concluir o cadastro manualmente."
+            : "Os dados da Plexi foram recebidos. Confira as informações e confirme o cadastro para liberar o veículo para uso."}
+        </div>
+      ) : null}
       {state.error ? (
         <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
@@ -348,10 +216,10 @@ export function VeiculoForm({
             <Controller
               control={form.control}
               name="prefeitura_id"
-              rules={{ required: "Selecione a prefeitura." }}
+              rules={{ required: "Selecione a empresa." }}
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="prefeitura_id">Prefeitura</FieldLabel>
+                  <FieldLabel htmlFor="prefeitura_id">Empresa</FieldLabel>
                   <PrefeituraCombobox
                     id="prefeitura_id"
                     value={field.value}
@@ -412,10 +280,17 @@ export function VeiculoForm({
         </FieldGroup>
       </fieldset>
 
-      <DialogFooter>
+      <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
+        {onBack ? (
+          <Button type="button" variant="outline" className="gap-2 sm:mr-auto" onClick={onBack} disabled={actionPending}>
+            <ArrowLeft className="size-4" />
+            Voltar à consulta
+          </Button>
+        ) : null}
+        <FormDialogCancel disabled={actionPending} />
         <Button type="submit" className="gap-2" disabled={actionPending}>
           {actionPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-          {actionPending ? "Salvando..." : isEditing ? "Salvar alterações" : "Cadastrar veículo"}
+          {actionPending ? "Salvando..." : veiculo?.status === "consult_error" ? "Confirmar cadastro" : isEditing ? "Salvar alterações" : "Cadastrar veículo"}
         </Button>
       </DialogFooter>
     </form>
@@ -450,7 +325,7 @@ function getDefaultValues(
     restricao_venda: veiculo?.restricao_venda ?? "",
     restricoes: veiculo?.restricoes ?? "",
     situacao_veicular: veiculo?.situacao_veicular ?? "",
-    status: veiculo?.status ?? "active",
+    status: veiculo?.status === "processing" || veiculo?.status === "consult_error" ? "active" : veiculo?.status ?? "active",
     tipo: veiculo?.tipo ?? "",
   };
 }

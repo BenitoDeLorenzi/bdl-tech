@@ -1,14 +1,11 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
-export type PrefeituraStatus =
-  | "active"
-  | "suspended"
-  | "expired"
-  | "cancelled";
+export type PrefeituraStatus = "active" | "suspended" | "expired" | "cancelled";
 
 export type Prefeitura = {
   id: string;
   nome: string;
+  nome_fantasia?: string | null;
   cnpj: string;
   brasao_path: string | null;
   brasao_url: string | null;
@@ -26,6 +23,7 @@ export type Prefeitura = {
 type PrefeituraRow = {
   id: string;
   nome: string;
+  nome_fantasia?: string | null;
   cnpj: string;
   brasao_path: string | null;
   brasao_url: string | null;
@@ -40,6 +38,7 @@ type PrefeituraRow = {
     fim: string;
     modulos: {
       nome: string;
+      nome_fantasia?: string | null;
     } | null;
   }> | null;
 };
@@ -50,15 +49,15 @@ export async function getPrefeituras(params?: {
 }) {
   const supabase = createSupabaseServerClient();
   let query = supabase
-    .from("prefeituras")
+    .from("empresas")
     .select(
-      "id,nome,cnpj,brasao_path,brasao_url,cidade,uf,cep,endereco,status,created_at,licencas(status,fim,modulos(nome))"
+      "id,nome,nome_fantasia,cnpj,brasao_path,brasao_url,cidade,uf,cep,endereco,status,created_at,licencas(status,fim,modulos(nome))",
     )
     .order("created_at", { ascending: false });
 
   if (params?.query) {
     query = query.or(
-      `nome.ilike.%${params.query}%,cnpj.ilike.%${params.query}%,cidade.ilike.%${params.query}%`
+      `nome.ilike.%${params.query}%,nome_fantasia.ilike.%${params.query}%,cnpj.ilike.%${params.query}%,cidade.ilike.%${params.query}%`,
     );
   }
 
@@ -74,13 +73,14 @@ export async function getPrefeituras(params?: {
 
   return ((data ?? []) as unknown as PrefeituraRow[]).map((prefeitura) => {
     const activeLicencas = (prefeitura.licencas ?? []).filter(
-      (licenca) => licenca.status === "active"
+      (licenca) => licenca.status === "active",
     );
 
     return {
       id: prefeitura.id,
       nome: prefeitura.nome,
-      cnpj: prefeitura.cnpj,
+      nome_fantasia: prefeitura.nome_fantasia,
+      cnpj: prefeitura.cnpj ?? "",
       brasao_path: prefeitura.brasao_path,
       brasao_url: prefeitura.brasao_url,
       cidade: prefeitura.cidade,

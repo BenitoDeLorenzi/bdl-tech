@@ -1,3 +1,4 @@
+import { hasModuleAccess } from "@/lib/empresa-access";
 import type { CurrentUserProfile } from "@/lib/auth-data";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -14,7 +15,6 @@ export type FrotasPermissionAccess = {
   canManageAbastecimento: boolean;
   canManageManutencao: boolean;
   canManageMotoristas: boolean;
-  canManageSecretarias: boolean;
   canManageVeiculos: boolean;
   canManageVencimentos: boolean;
   canCancelUsoVeiculo: boolean;
@@ -26,7 +26,6 @@ export type FrotasPermissionAccess = {
   canViewManutencao: boolean;
   canViewMotoristas: boolean;
   canViewRelatorios: boolean;
-  canViewSecretarias: boolean;
   canViewUsoVeiculo: boolean;
   canViewVeiculos: boolean;
   isFullAccess: boolean;
@@ -46,7 +45,6 @@ const fullAccess: FrotasPermissionAccess = {
   canManageAbastecimento: true,
   canManageManutencao: true,
   canManageMotoristas: true,
-  canManageSecretarias: true,
   canManageVeiculos: true,
   canManageVencimentos: true,
   canCancelUsoVeiculo: true,
@@ -58,7 +56,6 @@ const fullAccess: FrotasPermissionAccess = {
   canViewManutencao: true,
   canViewMotoristas: true,
   canViewRelatorios: true,
-  canViewSecretarias: true,
   canViewUsoVeiculo: true,
   canViewVeiculos: true,
   isFullAccess: true,
@@ -78,7 +75,6 @@ const limitedAccess: FrotasPermissionAccess = {
   canManageAbastecimento: false,
   canManageManutencao: false,
   canManageMotoristas: false,
-  canManageSecretarias: false,
   canManageVeiculos: false,
   canManageVencimentos: false,
   canCancelUsoVeiculo: false,
@@ -90,7 +86,6 @@ const limitedAccess: FrotasPermissionAccess = {
   canViewManutencao: false,
   canViewMotoristas: false,
   canViewRelatorios: false,
-  canViewSecretarias: false,
   canViewUsoVeiculo: false,
   canViewVeiculos: false,
   isFullAccess: false,
@@ -104,10 +99,12 @@ type UsuarioPermissaoRow = {
 };
 
 export async function getFrotasPermissionAccess(
-  profile: CurrentUserProfile
+  profile: CurrentUserProfile,
 ): Promise<FrotasPermissionAccess> {
+  if (!(await hasModuleAccess(profile, "frotas-publicas")))
+    return limitedAccess;
   if (profile.role === "bdl_admin" || profile.role === "municipal_admin") {
-    return fullAccess;
+    return { ...fullAccess, canDeleteVeiculos: profile.role === "bdl_admin" };
   }
 
   if (!profile.prefeitura_id) {
@@ -127,12 +124,12 @@ export async function getFrotasPermissionAccess(
   const keys = new Set(
     ((data ?? []) as unknown as UsuarioPermissaoRow[])
       .map((item) => item.permissoes?.chave)
-      .filter((key): key is string => Boolean(key))
+      .filter((key): key is string => Boolean(key)),
   );
 
   return {
     canCreateVeiculos: keys.has("vehicles.create"),
-    canDeleteVeiculos: keys.has("vehicles.delete"),
+    canDeleteVeiculos: false,
     canCancelAbastecimento: keys.has("fuel.cancel"),
     canCompleteAbastecimento: keys.has("fuel.complete"),
     canCreateAbastecimento: keys.has("fuel.create"),
@@ -143,12 +140,9 @@ export async function getFrotasPermissionAccess(
     canManageManutencao:
       keys.has("maintenance.complete") || keys.has("maintenance.cancel"),
     canManageMotoristas: keys.has("drivers.manage"),
-    canManageSecretarias: keys.has("departments.manage"),
     canManageVencimentos: keys.has("expirations.manage"),
     canManageCadastros:
-      keys.has("fuel_stations.manage") ||
-      keys.has("drivers.manage") ||
-      keys.has("departments.manage"),
+      keys.has("fuel_stations.manage") || keys.has("drivers.manage") || keys.has("workshops.manage"),
     canManageVeiculos: keys.has("vehicles.manage"),
     canCancelUsoVeiculo: keys.has("vehicle_usage.cancel"),
     canCreateUsoVeiculo: keys.has("vehicle_usage.create"),
@@ -159,7 +153,6 @@ export async function getFrotasPermissionAccess(
     canViewManutencao: hasAnyPrefix(keys, "maintenance."),
     canViewMotoristas: hasAnyPrefix(keys, "drivers."),
     canViewRelatorios: keys.has("reports.read"),
-    canViewSecretarias: hasAnyPrefix(keys, "departments."),
     canViewUsoVeiculo: hasAnyPrefix(keys, "vehicle_usage."),
     canViewVeiculos: hasAnyPrefix(keys, "vehicles."),
     isFullAccess: false,
@@ -173,12 +166,9 @@ function hasAnyPrefix(keys: Set<string>, prefix: string) {
 
 export async function hasFrotasPermission(
   profile: CurrentUserProfile,
-  key: string
+  key: string,
 ) {
-  if (profile.role === "bdl_admin" || profile.role === "municipal_admin") {
-    return true;
-  }
-
+  if (key === "vehicles.delete" && profile.role !== "bdl_admin") return false;
   const access = await getFrotasPermissionAccess(profile);
-  return access.keys.includes(key);
+  return access.isFullAccess || access.keys.includes(key);
 }

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Fuel } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 
 import {
   Card,
@@ -25,10 +25,10 @@ export default async function PostoLoginPage() {
       <section className="hidden min-h-screen flex-col justify-between bg-primary p-8 text-primary-foreground lg:flex">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-lg bg-primary-foreground text-primary">
-            <Fuel className="size-5" />
+            <BrandMark />
           </div>
           <div>
-            <div className="text-lg font-semibold">BDL Tech</div>
+            <div className="text-lg font-semibold">Vibe Tech</div>
             <div className="text-sm text-primary-foreground/70">
               Portal do posto
             </div>
@@ -45,7 +45,7 @@ export default async function PostoLoginPage() {
         </div>
 
         <div className="text-sm text-primary-foreground/60">
-          frotaspublicas.bdltech.com.br
+          Vibe Tech · Vibe Frotas
         </div>
       </section>
 
@@ -53,7 +53,7 @@ export default async function PostoLoginPage() {
         <Card className="w-full max-w-[420px] shadow-sm">
           <CardHeader className="space-y-2">
             <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground lg:hidden">
-              <Fuel className="size-5" />
+              <BrandMark />
             </div>
             <CardTitle className="text-2xl">Portal do posto</CardTitle>
             <CardDescription>Informe o CNPJ para continuar.</CardDescription>

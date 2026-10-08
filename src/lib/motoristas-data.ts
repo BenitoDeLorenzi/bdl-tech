@@ -53,13 +53,18 @@ export async function getMotoristasData(params?: {
 
   let motoristasQuery = supabase
     .from("frota_motoristas")
-    .select("id,prefeitura_id,nome,cpf,status,created_at,prefeituras(nome)")
+    .select(
+      "id,prefeitura_id,nome,cpf,status,created_at,prefeituras:empresas(nome)",
+    )
     .not("cpf", "is", null)
     .neq("cpf", "")
     .order("created_at", { ascending: false });
 
-  if (selectedPrefeituraId) {
-    motoristasQuery = motoristasQuery.eq("prefeitura_id", selectedPrefeituraId);
+  {
+    motoristasQuery = motoristasQuery.eq(
+      "prefeitura_id",
+      selectedPrefeituraId ?? "00000000-0000-0000-0000-000000000000",
+    );
   }
 
   if (params?.status && params.status !== "all") {
@@ -101,32 +106,34 @@ export async function getMotoristasData(params?: {
       .order("data_saida", { ascending: false });
 
     if (!usosResult.error) {
-      ((usosResult.data ?? []) as unknown as UsoMotoristaRow[]).forEach((uso) => {
-        if (!uso.motorista_id) {
-          return;
-        }
+      ((usosResult.data ?? []) as unknown as UsoMotoristaRow[]).forEach(
+        (uso) => {
+          if (!uso.motorista_id) {
+            return;
+          }
 
-        const current = usageByMotorista.get(uso.motorista_id) ?? {
-          emUso: false,
-          total: 0,
-          ultimoUso: null,
-          veiculoAtual: null,
-        };
+          const current = usageByMotorista.get(uso.motorista_id) ?? {
+            emUso: false,
+            total: 0,
+            ultimoUso: null,
+            veiculoAtual: null,
+          };
 
-        current.total += 1;
-        current.ultimoUso = current.ultimoUso ?? uso.data_saida;
+          current.total += 1;
+          current.ultimoUso = current.ultimoUso ?? uso.data_saida;
 
-        if (uso.status === "in_use") {
-          current.emUso = true;
-          current.veiculoAtual =
-            current.veiculoAtual ??
-            [uso.frota_veiculos?.modelo, uso.frota_veiculos?.placa]
-              .filter(Boolean)
-              .join(" · ");
-        }
+          if (uso.status === "in_use") {
+            current.emUso = true;
+            current.veiculoAtual =
+              current.veiculoAtual ??
+              [uso.frota_veiculos?.modelo, uso.frota_veiculos?.placa]
+                .filter(Boolean)
+                .join(" · ");
+          }
 
-        usageByMotorista.set(uso.motorista_id, current);
-      });
+          usageByMotorista.set(uso.motorista_id, current);
+        },
+      );
     }
   }
 
@@ -160,16 +167,19 @@ export async function getMotoristasData(params?: {
           motorista.veiculo_atual,
         ]
           .filter(Boolean)
-          .join(" ")
-      ).includes(normalizedQuery)
+          .join(" "),
+      ).includes(normalizedQuery),
     );
   }
 
   return {
     metricas: {
-      ativos: motoristas.filter((motorista) => motorista.status === "active").length,
+      ativos: motoristas.filter((motorista) => motorista.status === "active")
+        .length,
       emUso: motoristas.filter((motorista) => motorista.em_uso).length,
-      inativos: motoristas.filter((motorista) => motorista.status === "inactive").length,
+      inativos: motoristas.filter(
+        (motorista) => motorista.status === "inactive",
+      ).length,
       total: motoristas.length,
     },
     motoristas,

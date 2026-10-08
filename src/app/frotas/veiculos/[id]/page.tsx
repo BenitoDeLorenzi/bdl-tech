@@ -1,3 +1,5 @@
+import { ListMetrics } from "@/components/list-metrics";
+import { VehicleOverview, VehicleOverviewHeader } from "./vehicle-overview";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -7,11 +9,10 @@ import {
   CircleCheck,
   CircleDollarSign,
   CircleX,
+  ClipboardCheck,
+  LoaderCircle,
   FileText,
   Fuel,
-  Gauge,
-  Hash,
-  Loader2,
   Paperclip,
   Pencil,
   Plus,
@@ -19,12 +20,12 @@ import {
   Wrench,
 } from "lucide-react";
 
-import { AnexosManagerForm } from "@/app/frotas/anexos-manager-form";
+import { AnexosList, AnexosManagerForm } from "@/app/frotas/anexos-manager-form";
 import { DebitoManualForm } from "@/app/frotas/debito-manual-form";
 import { FrotasShell } from "@/app/frotas/frotas-shell";
 import { MultaManualForm } from "@/app/frotas/multa-manual-form";
 import { VehicleRealtimeSync } from "@/app/frotas/veiculos/vehicle-realtime-sync";
-import { VeiculoFotoAvatarControl } from "@/app/frotas/veiculo-foto-avatar-control";
+import { VehicleLookupSync } from "@/app/frotas/veiculos/vehicle-lookup-sync";
 import { VeiculoForm } from "@/app/frotas/veiculo-form";
 import { VencimentoDataForm } from "@/app/frotas/vencimento-data-form";
 import { VencimentoPagamentoForm } from "@/app/frotas/vencimento-pagamento-form";
@@ -39,6 +40,7 @@ import {
   getFrotasData,
   getVeiculoConsultaVeicularData,
   getVeiculoDebitosData,
+  getVeiculoPlexiResumo,
   type AbastecimentoStatus,
   type FrotaDebitoVeicular,
   type FrotaMultaVeicular,
@@ -52,8 +54,6 @@ import {
   type VeiculoStatus,
 } from "@/lib/frotas-data";
 import { getFrotasPermissionAccess } from "@/lib/frotas-permissions";
-import { getSecretariaOptions } from "@/lib/secretarias-data";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -97,17 +97,17 @@ export default async function VeiculoGestaoPage({ params }: PageProps) {
   const access = await getFrotasPermissionAccess(profile);
   const { id } = await params;
   const data = await getFrotasData({ veiculoId: id });
-  const debitosData = await getVeiculoDebitosData(id);
-  const consultaVeicularData = await getVeiculoConsultaVeicularData(id);
   const veiculo = data.veiculos[0];
 
-  if (!veiculo) {
+  if (!veiculo || (profile.role !== "bdl_admin" && veiculo.prefeitura_id !== profile.prefeitura_id)) {
     notFound();
   }
+  const [debitosData, consultaVeicularData, plexiResumo] = await Promise.all([
+    getVeiculoDebitosData(id), getVeiculoConsultaVeicularData(id), getVeiculoPlexiResumo(id),
+  ]);
 
-  const secretarias = await getSecretariaOptions(veiculo.prefeitura_id);
   const totalDebitos = data.vencimentos.length + debitosData.debitos.length;
-  const title = `${veiculo.marca} ${veiculo.modelo} · ${veiculo.placa}`;
+  const title = "Gestão do veículo";
 
   return (
     <FrotasShell
@@ -132,15 +132,15 @@ export default async function VeiculoGestaoPage({ params }: PageProps) {
                 })}
               >
                 <Pencil className="size-4" />
-                Editar
+                {veiculo.status === "processing" ? "Consulta em andamento" : veiculo.status === "consult_error" ? "Conferir cadastro" : "Editar"}
               </DialogTrigger>
               <DialogContent className="sm:max-w-4xl">
                 <DialogHeader>
-                  <DialogTitle>Editar veículo</DialogTitle>
+                  <DialogTitle>{veiculo.status === "consult_error" ? "Conferir cadastro do veículo" : "Editar veículo"}</DialogTitle>
                 </DialogHeader>
                 <VeiculoForm
                   prefeituras={data.prefeituras}
-                  secretarias={secretarias}
+
                   selectedPrefeituraId={veiculo.prefeitura_id}
                   showPrefeituraField={profile.role === "bdl_admin"}
                   veiculo={veiculo}
@@ -156,12 +156,13 @@ export default async function VeiculoGestaoPage({ params }: PageProps) {
       selectedPrefeituraId={veiculo.prefeitura_id}
       title={title}
     >
+      <VehicleLookupSync prefeituraId={veiculo.prefeitura_id} vehicleIds={veiculo.status === "processing" ? [veiculo.id] : []} />
       <VehicleRealtimeSync
         prefeituraId={veiculo.prefeitura_id}
         vehicleId={veiculo.id}
       />
       <main className="flex flex-1 flex-col gap-3 p-4">
-        <VehicleHero canUpdate={access.canUpdateVeiculos} veiculo={veiculo} />
+        <VehicleOverviewHeader canUpdate={access.canUpdateVeiculos} veiculo={veiculo} status={<VehicleStatusBadge status={veiculo.status} lookupStatus={veiculo.consulta_status} />} />
 
         <Tabs defaultValue="resumo" className="w-full">
           <TabsList className="w-full">
@@ -196,7 +197,13 @@ export default async function VeiculoGestaoPage({ params }: PageProps) {
           </TabsList>
 
           <TabsContent value="resumo">
-            <VehicleSummary veiculo={veiculo} />
+            <VehicleOverview veiculo={veiculo} consultation={plexiResumo ? {
+              debtTotal: debitosData.debitos.reduce((sum, debt) => sum + Number(debt.amount), 0),
+              debtCount: debitosData.debitos.length,
+              fineTotal: plexiResumo.totalMultasPagar,
+              fineHistory: plexiResumo.historicoMultas,
+              consultedAt: plexiResumo.consultadoEm,
+            } : null} />
           </TabsContent>
 
           <TabsContent value="debitos">
@@ -207,6 +214,9 @@ export default async function VeiculoGestaoPage({ params }: PageProps) {
               totalDebitos={totalDebitos}
               veiculo={veiculo}
             />
+            {plexiResumo?.dividaAtiva.length ? <Card className="mt-3"><CardHeader><CardTitle>IPVA em dívida ativa</CardTitle><CardDescription>Informações retornadas pelo Detran/SC.</CardDescription></CardHeader><CardContent className="space-y-3">
+              {plexiResumo.dividaAtiva.map((debt, index) => <div key={index} className="rounded-lg border p-3 text-sm">{Object.entries(debt).filter(([, value]) => typeof value === "string" || typeof value === "number").map(([key, value]) => <div key={key} className="flex justify-between gap-4"><span className="text-muted-foreground">{key}</span><span>{String(value)}</span></div>)}</div>)}
+            </CardContent></Card> : null}
           </TabsContent>
 
           <TabsContent value="multas">
@@ -247,9 +257,10 @@ export default async function VeiculoGestaoPage({ params }: PageProps) {
                     ownerId={veiculo.id}
                     ownerLabel="veículo"
                     type="veiculo"
+                    pdfDocument={plexiResumo?.temPdf ? { url: `/api/frotas/veiculos/${id}/documento-plexi`, downloadUrl: `/api/frotas/veiculos/${id}/documento-plexi?download=1`, createdAt: plexiResumo.consultadoEm } : undefined}
                   />
                 ) : (
-                  <ReadOnlyAttachments veiculo={veiculo} />
+                  <AnexosList anexos={veiculo.anexos} pdfDocument={plexiResumo?.temPdf ? { url: `/api/frotas/veiculos/${id}/documento-plexi`, downloadUrl: `/api/frotas/veiculos/${id}/documento-plexi?download=1`, createdAt: plexiResumo.consultadoEm } : undefined} />
                 )}
               </CardContent>
             </Card>
@@ -257,77 +268,6 @@ export default async function VeiculoGestaoPage({ params }: PageProps) {
         </Tabs>
       </main>
     </FrotasShell>
-  );
-}
-
-function VehicleHero({
-  canUpdate,
-  veiculo,
-}: {
-  canUpdate: boolean;
-  veiculo: FrotaVeiculo;
-}) {
-  return (
-    <Card>
-      <CardContent className="p-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
-            {canUpdate ? (
-              <VeiculoFotoAvatarControl veiculo={veiculo} />
-            ) : (
-              <Avatar className="size-24 rounded-lg">
-                {veiculo.foto_url ? (
-                  <AvatarImage
-                    src={veiculo.foto_url}
-                    alt={`Foto do veículo ${veiculo.placa}`}
-                    className="rounded-lg"
-                  />
-                ) : null}
-                <AvatarFallback className="rounded-lg">
-                  <Car className="size-8" />
-                </AvatarFallback>
-              </Avatar>
-            )}
-            <div className="min-w-0 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-xl font-semibold">
-                  {veiculo.modelo}
-                </h2>
-                <VehicleStatusBadge status={veiculo.status} />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {veiculo.marca} · {veiculo.ano_modelo ?? veiculo.ano} ·{" "}
-                {veiculo.secretaria || "Sem secretaria"}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary" className="font-normal">
-                  <Hash className="size-3.5" />
-                  {veiculo.placa}
-                </Badge>
-                <Badge variant="outline" className="font-normal">
-                  Renavam {veiculo.renavam ?? "-"}
-                </Badge>
-                <Badge variant="outline" className="font-normal">
-                  <Fuel className="size-3.5" />
-                  {veiculo.combustivel ?? "-"}
-                </Badge>
-                <Badge variant="outline" className="font-normal">
-                  <Gauge className="size-3.5" />
-                  {formatMileage(veiculo.quilometragem)}
-                </Badge>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:w-[420px]">
-            <CompactDetail label="Prefeitura" value={veiculo.prefeitura_nome} />
-            <CompactDetail label="Tipo" value={veiculo.tipo} />
-            <CompactDetail label="Categoria" value={veiculo.categoria ?? "-"} />
-            <CompactDetail label="Cor" value={veiculo.cor ?? "-"} />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -350,12 +290,9 @@ function VehicleDebitsTab({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle>Débitos</CardTitle>
-            <CardDescription>
-              Cadastro manual e retornos de integração em uma única lista.
-            </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">{totalDebitos} débito(s)</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <ListMetrics items={[{ label: "Débitos", value: totalDebitos, tone: "info" }]} />
             {canManage ? (
               <Dialog>
                 <DialogTrigger
@@ -392,8 +329,6 @@ function VehicleDebitsTab({
                   <TableHead>Valor</TableHead>
                   <TableHead>Situação</TableHead>
                   <TableHead>Pagamento</TableHead>
-                  <TableHead>Origem</TableHead>
-                  <TableHead className="w-[92px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -422,11 +357,6 @@ function VehicleDebitsTab({
                     </TableCell>
                     <TableCell>
                       <PaymentSummary vencimento={vencimento} />
-                    </TableCell>
-                    <TableCell>
-                      <DebtOriginBadge origem={vencimento.origem} />
-                    </TableCell>
-                    <TableCell>
                       <VencimentoActions
                         canManage={canManage}
                         vencimento={vencimento}
@@ -441,10 +371,11 @@ function VehicleDebitsTab({
                         <div className="font-medium">
                           {debito.title ?? "Débito veicular"}
                         </div>
-                        <div className="max-w-[260px] truncate text-xs text-muted-foreground">
+                        <div className="max-w-[420px] whitespace-normal text-xs text-muted-foreground">
                           {formatExternalDebtType(debito.type)}
                           {debito.description ? ` · ${debito.description}` : ""}
                         </div>
+                        {debito.year ? <div className="text-xs text-muted-foreground">Exercício {debito.year}</div> : null}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -461,14 +392,6 @@ function VehicleDebitsTab({
                         Aguardando conciliação
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <DebtOriginBadge origem="api" />
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-right text-xs text-muted-foreground">
-                        Consulta
-                      </div>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -481,8 +404,7 @@ function VehicleDebitsTab({
               Nenhum débito encontrado
             </h3>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Cadastre um débito manualmente ou aguarde o retorno da consulta
-              automática quando a integração estiver ativa.
+              Nenhum débito cadastrado para este veículo.
             </p>
           </div>
         )}
@@ -676,23 +598,6 @@ function ExternalDebtStatusBadge({ debito }: { debito: FrotaDebitoVeicular }) {
   );
 }
 
-function DebtOriginBadge({ origem }: { origem: string }) {
-  const isAutomatic = origem === "api" || origem === "plexi";
-
-  return (
-    <Badge
-      variant="outline"
-      className={
-        isAutomatic
-          ? "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50"
-          : "border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100"
-      }
-    >
-      {isAutomatic ? "Automático" : "Manual"}
-    </Badge>
-  );
-}
-
 function formatExternalDebtType(type: string | null) {
   const labels: Record<string, string> = {
     dpvat: "Seguro",
@@ -714,275 +619,42 @@ function formatExternalDate(value: string) {
   }).format(new Date(value));
 }
 
-function VehicleSummary({ veiculo }: { veiculo: FrotaVeiculo }) {
-  return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>Identificação</CardTitle>
-          <CardDescription>Dados principais do documento.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-2">
-          <CompactDetail label="Renavam" value={veiculo.renavam ?? "-"} />
-          <CompactDetail label="Placa" value={veiculo.placa} />
-          <CompactDetail
-            label="Exercício"
-            value={veiculo.exercicio ? String(veiculo.exercicio) : "-"}
-          />
-          <CompactDetail
-            label="Ano fabricação"
-            value={veiculo.ano_fabricacao ? String(veiculo.ano_fabricacao) : "-"}
-          />
-          <CompactDetail
-            label="Ano modelo"
-            value={veiculo.ano_modelo ? String(veiculo.ano_modelo) : "-"}
-          />
-          <CompactDetail label="Tipo" value={veiculo.tipo} />
-          <CompactDetail label="Espécie" value={veiculo.especie ?? "-"} />
-          <CompactDetail label="Combustível" value={veiculo.combustivel ?? "-"} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>Características</CardTitle>
-          <CardDescription>Informações físicas e operacionais.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-2">
-          <CompactDetail label="Marca" value={veiculo.marca} />
-          <CompactDetail label="Modelo" value={veiculo.modelo} />
-          <CompactDetail label="Versão" value={veiculo.versao ?? "-"} />
-          <CompactDetail label="Cor" value={veiculo.cor ?? "-"} />
-          <CompactDetail label="Categoria" value={veiculo.categoria ?? "-"} />
-          <CompactDetail label="Capacidade" value={veiculo.capacidade ?? "-"} />
-          <CompactDetail label="Potência" value={veiculo.potencia ?? "-"} />
-          <CompactDetail label="Cilindrada" value={veiculo.cilindrada ?? "-"} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>Registro</CardTitle>
-          <CardDescription>Localização e vínculo municipal.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-2">
-          <CompactDetail label="Prefeitura" value={veiculo.prefeitura_nome} />
-          <CompactDetail label="Secretaria" value={veiculo.secretaria || "-"} />
-          <CompactDetail label="Local" value={veiculo.local_registro ?? "-"} />
-          <CompactDetail
-            label="Data"
-            value={formatVehicleDate(veiculo.data_documento)}
-          />
-          <CompactDetail
-            label="Município"
-            value={veiculo.municipio_emplacamento ?? "-"}
-          />
-          <CompactDetail
-            label="Situação"
-            value={veiculo.situacao_veicular ?? "-"}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>Proprietário</CardTitle>
-          <CardDescription>Dados de titularidade e restrições.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2">
-          <CompactDetail
-            label="Proprietário"
-            value={veiculo.proprietario_atual ?? "-"}
-          />
-          <CompactDetail
-            label="CPF/CNPJ"
-            value={veiculo.proprietario_documento ?? "-"}
-          />
-          <CompactDetail
-            label="Restrição de venda"
-            value={veiculo.restricao_venda ?? "-"}
-          />
-          <CompactDetail label="Restrições" value={veiculo.restricoes ?? "-"} />
-        </CardContent>
-      </Card>
-    </div>
-  );
+function VehicleMaintenanceHistory({ manutencoes }: { manutencoes: FrotaVeiculoManutencao[] }) {
+  return <Card><CardHeader><CardTitle>Histórico de manutenção</CardTitle></CardHeader><CardContent>
+    <div className="overflow-hidden rounded-lg border"><Table><TableHeader><TableRow className="bg-muted/50">
+      <TableHead>Entrada / saída</TableHead><TableHead>Serviço</TableHead><TableHead>Oficina / responsável</TableHead><TableHead>Quilometragem</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Valor</TableHead>
+    </TableRow></TableHeader><TableBody>
+      {manutencoes.length ? manutencoes.map((item) => <TableRow key={item.id}>
+        <TableCell>{formatFrotaDate(item.data_entrada)}<div className="text-xs text-muted-foreground">{item.data_saida ? formatFrotaDate(item.data_saida) : "Em andamento"}</div></TableCell>
+        <TableCell><div className="font-medium">{item.tipo}</div><div className="max-w-[360px] whitespace-normal text-xs text-muted-foreground">{item.descricao}</div>{item.observacoes ? <div className="text-xs text-muted-foreground">{item.observacoes}</div> : null}</TableCell>
+        <TableCell>{item.oficina || "-"}<div className="text-xs text-muted-foreground">{item.responsavel || "-"}</div></TableCell>
+        <TableCell>{formatMileage(item.quilometragem)}</TableCell><TableCell><MaintenanceStatusBadge status={item.status} /></TableCell>
+        <TableCell className="text-right font-medium">{item.valor !== null ? formatCurrency(item.valor) : "-"}</TableCell>
+      </TableRow>) : <TableRow><TableCell colSpan={6} className="h-28 text-center text-muted-foreground">Nenhuma manutenção registrada.</TableCell></TableRow>}
+    </TableBody></Table></div>
+  </CardContent></Card>;
 }
 
-function VehicleMaintenanceHistory({
-  manutencoes,
-}: {
-  manutencoes: FrotaVeiculoManutencao[];
-}) {
-  if (!manutencoes.length) {
-    return (
-      <EmptyTab
-        icon={Wrench}
-        title="Nenhuma manutenção registrada"
-        description="Quando este veículo passar por manutenção, o histórico aparecerá aqui."
-      />
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Histórico de manutenção</CardTitle>
-        <CardDescription>
-          Registros ordenados do mais recente para o mais antigo.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        {manutencoes.map((manutencao) => (
-          <div key={manutencao.id} className="rounded-lg border p-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{manutencao.tipo}</Badge>
-                  <MaintenanceStatusBadge status={manutencao.status} />
-                </div>
-                <div className="mt-2 font-medium">{manutencao.descricao}</div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span>Entrada: {formatFrotaDate(manutencao.data_entrada)}</span>
-                  {manutencao.data_saida ? (
-                    <span>Saída: {formatFrotaDate(manutencao.data_saida)}</span>
-                  ) : null}
-                  {manutencao.oficina ? <span>{manutencao.oficina}</span> : null}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 md:min-w-56">
-                <MetricTile
-                  label="Valor"
-                  value={manutencao.valor ? formatCurrency(manutencao.valor) : "-"}
-                />
-                <MetricTile
-                  label="Km"
-                  value={formatMileage(manutencao.quilometragem)}
-                />
-              </div>
-            </div>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function VehicleFuelHistory({
-  abastecimentos,
-}: {
-  abastecimentos: FrotaVeiculoAbastecimento[];
-}) {
-  if (!abastecimentos.length) {
-    return (
-      <EmptyTab
-        icon={Fuel}
-        title="Nenhum abastecimento registrado"
-        description="Ordens emitidas e abastecimentos concluídos aparecerão aqui."
-      />
-    );
-  }
-
-  const totalGeral = abastecimentos.reduce(
-    (total, abastecimento) => total + getFuelOrderTotal(abastecimento),
-    0
-  );
-  const concluidas = abastecimentos.filter(
-    (abastecimento) => abastecimento.status === "completed"
-  ).length;
-  const consumoMedio = calculateAverageFuelConsumption(abastecimentos);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Histórico de abastecimento</CardTitle>
-        <CardDescription>
-          Ordens e lançamentos vinculados a este veículo.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        <div className="grid gap-3 sm:grid-cols-4">
-          <MetricTile label="Ordens" value={String(abastecimentos.length)} />
-          <MetricTile label="Concluídas" value={String(concluidas)} />
-          <MetricTile label="Média" value={formatFuelAverage(consumoMedio)} />
-          <MetricTile label="Total" value={formatCurrency(totalGeral)} />
-        </div>
-        {abastecimentos.map((abastecimento) => (
-          <div key={abastecimento.id} className="rounded-lg border p-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{abastecimento.numero_ordem}</Badge>
-                  <FuelStatusBadge status={abastecimento.status} />
-                  {abastecimento.arla_incluso ? (
-                    <Badge variant="secondary">ARLA</Badge>
-                  ) : null}
-                </div>
-                <div className="mt-2 font-medium">
-                  {abastecimento.posto_nome || "Posto não informado"}
-                </div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span>
-                    Data: {formatFrotaDate(abastecimento.data_abastecimento)}
-                  </span>
-                  <span>Motorista: {abastecimento.motorista || "-"}</span>
-                  {abastecimento.numero_nota_fiscal ? (
-                    <span>NF: {abastecimento.numero_nota_fiscal}</span>
-                  ) : null}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 md:min-w-56">
-                <MetricTile
-                  label="Total"
-                  value={formatCurrency(getFuelOrderTotal(abastecimento))}
-                />
-                <MetricTile
-                  label="Km"
-                  value={formatMileage(abastecimento.quilometragem)}
-                />
-              </div>
-            </div>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ReadOnlyAttachments({ veiculo }: { veiculo: FrotaVeiculo }) {
-  if (!veiculo.anexos.length) {
-    return (
-      <EmptyTab
-        icon={Paperclip}
-        title="Nenhum anexo registrado"
-        description="Documentos do veículo aparecerão aqui quando forem cadastrados."
-      />
-    );
-  }
-
-  return (
-    <div className="grid gap-2">
-      {veiculo.anexos.map((anexo) => (
-        <div
-          key={anexo.id}
-          className="flex items-center justify-between gap-3 rounded-lg border p-3"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <FileText className="size-4 text-muted-foreground" />
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium">
-                {anexo.file_name}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {anexo.file_type ?? "Documento"}
-              </div>
-            </div>
-          </div>
-          <Badge variant="outline">Anexo</Badge>
-        </div>
-      ))}
-    </div>
-  );
+function VehicleFuelHistory({ abastecimentos }: { abastecimentos: FrotaVeiculoAbastecimento[] }) {
+  const totalGeral = abastecimentos.reduce((total, item) => total + getFuelOrderTotal(item), 0);
+  const concluidas = abastecimentos.filter((item) => item.status === "completed").length;
+  return <Card><CardHeader className="flex flex-wrap items-center justify-between gap-3"><CardTitle>Histórico de abastecimento</CardTitle><ListMetrics items={[
+    { label: "Ordens", value: abastecimentos.length },
+    { label: "Concluídas", value: concluidas, tone: "success" },
+    { label: "Média", value: formatFuelAverage(calculateAverageFuelConsumption(abastecimentos)), icon: "gauge" },
+    { label: "Total", value: formatCurrency(totalGeral), tone: "info", icon: "money" },
+  ]} /></CardHeader><CardContent>
+    <div className="overflow-hidden rounded-lg border"><Table><TableHeader><TableRow className="bg-muted/50">
+      <TableHead>Ordem</TableHead><TableHead>Data</TableHead><TableHead>Posto / motorista</TableHead><TableHead>Quilometragem</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Total</TableHead>
+    </TableRow></TableHeader><TableBody>
+      {abastecimentos.length ? abastecimentos.map((item) => <TableRow key={item.id}>
+        <TableCell className="font-medium">{item.numero_ordem}{item.numero_nota_fiscal ? <div className="text-xs font-normal text-muted-foreground">NF {item.numero_nota_fiscal}</div> : null}</TableCell>
+        <TableCell>{formatFrotaDate(item.data_abastecimento)}</TableCell><TableCell>{item.posto_nome || "-"}<div className="text-xs text-muted-foreground">{item.motorista || "-"}</div></TableCell>
+        <TableCell>{formatMileage(item.quilometragem)}</TableCell><TableCell><FuelStatusBadge status={item.status} />{item.arla_incluso ? <Badge variant="secondary" className="ml-2">ARLA</Badge> : null}</TableCell>
+        <TableCell className="text-right font-medium">{formatCurrency(getFuelOrderTotal(item))}</TableCell>
+      </TableRow>) : <TableRow><TableCell colSpan={6} className="h-28 text-center text-muted-foreground">Nenhum abastecimento registrado.</TableCell></TableRow>}
+    </TableBody></Table></div>
+  </CardContent></Card>;
 }
 
 function VehicleFinesTab({
@@ -1000,12 +672,9 @@ function VehicleFinesTab({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle>Multas</CardTitle>
-            <CardDescription>
-              Cadastro manual e retornos de integração em uma única lista.
-            </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">{multas.length} multa(s)</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <ListMetrics items={[{ label: "Multas", value: multas.length, tone: "warning" }]} />
             {canManage ? (
               <Dialog>
                 <DialogTrigger
@@ -1032,7 +701,16 @@ function VehicleFinesTab({
         </div>
       </CardHeader>
       <CardContent>
-        {multas.length ? (
+        <Tabs defaultValue="pagar">
+          <TabsList className="mb-3">
+            <TabsTrigger value="pagar">A pagar ({multas.filter((fine) => fine.origem === "pagar").length})</TabsTrigger>
+            <TabsTrigger value="historico">Histórico ({multas.filter((fine) => fine.origem === "historico").length})</TabsTrigger>
+            <TabsTrigger value="manual">Manuais ({multas.filter((fine) => fine.origem === "manual").length})</TabsTrigger>
+          </TabsList>
+          {(["pagar", "historico", "manual"] as const).map((origin) => {
+            const filtered = multas.filter((fine) => fine.origem === origin);
+            return <TabsContent key={origin} value={origin}>
+        {filtered.length ? (
           <div className="overflow-hidden rounded-lg border">
             <Table>
               <TableHeader>
@@ -1041,12 +719,11 @@ function VehicleFinesTab({
                   <TableHead>Data</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Situação</TableHead>
-                  <TableHead>Origem</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {multas.map((multa) => (
+                {filtered.map((multa) => (
                   <TableRow key={multa.id}>
                     <TableCell className="font-medium">
                       {multa.numero_auto}
@@ -1063,10 +740,10 @@ function VehicleFinesTab({
                     </TableCell>
                     <TableCell>
                       <div className="max-w-[360px]">
-                        <div className="truncate font-medium">
+                        <div className="whitespace-normal font-medium">
                           {multa.descricao ?? "Infração não informada"}
                         </div>
-                        <div className="truncate text-xs text-muted-foreground">
+                        <div className="whitespace-normal text-xs text-muted-foreground">
                           {multa.local_complemento ?? "Local não informado"}
                         </div>
                       </div>
@@ -1075,9 +752,6 @@ function VehicleFinesTab({
                       <Badge variant="outline">
                         {multa.situacao ?? "Não informada"}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <FineOriginBadge origem={multa.origem} />
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatCurrency(multa.valor)}
@@ -1094,188 +768,54 @@ function VehicleFinesTab({
               Nenhuma multa registrada
             </h3>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Cadastre uma multa manualmente ou aguarde o retorno da consulta
-              automática quando a integração estiver ativa.
+              Nenhuma multa nesta visualização.
             </p>
           </div>
         )}
+            </TabsContent>;
+          })}
+        </Tabs>
       </CardContent>
     </Card>
   );
 }
 
-function FineOriginBadge({
-  origem,
-}: {
-  origem: FrotaMultaVeicular["origem"];
-}) {
-  const label = {
-    historico: "Histórico",
-    manual: "Manual",
-    pagar: "A pagar",
-  }[origem];
-
-  return <Badge variant="outline">{label}</Badge>;
+function VehicleProcessesTab({ processos, recursos }: { processos: FrotaProcessoVeicular[]; recursos: FrotaRecursoInfracao[] }) {
+  const services = processos.flatMap((process) => process.servicos.map((service, index) => ({ ...service, process: process.processo, key: process.id + "-" + index })));
+  return <div className="space-y-3">
+    <Card><CardHeader><CardTitle>Processos</CardTitle></CardHeader><CardContent><div className="overflow-hidden rounded-lg border"><Table><TableHeader><TableRow className="bg-muted/50">
+      <TableHead>Processo</TableHead><TableHead>Início</TableHead><TableHead>Encerramento</TableHead><TableHead>Interessado</TableHead><TableHead>Situação</TableHead>
+    </TableRow></TableHeader><TableBody>{processos.length ? processos.map((process) => <TableRow key={process.id}><TableCell className="font-medium">{process.processo || "-"}</TableCell><TableCell>{process.inicio_em || "-"}</TableCell><TableCell>{process.final_em || "-"}</TableCell><TableCell>{process.interessado || "-"}</TableCell><TableCell><Badge variant="outline">{process.situacao || "Não informada"}</Badge></TableCell></TableRow>) : <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">Nenhum processo registrado.</TableCell></TableRow>}</TableBody></Table></div></CardContent></Card>
+    <Card><CardHeader><CardTitle>Recursos de infração</CardTitle></CardHeader><CardContent><div className="overflow-hidden rounded-lg border"><Table><TableHeader><TableRow className="bg-muted/50">
+      <TableHead>Processo</TableHead><TableHead>Auto</TableHead><TableHead>Infração</TableHead><TableHead>Resultado</TableHead>
+    </TableRow></TableHeader><TableBody>{recursos.length ? recursos.map((resource) => <TableRow key={resource.id}><TableCell className="max-w-[300px] whitespace-normal font-medium">{resource.processo || "-"}</TableCell><TableCell>{resource.numero_auto || "-"}</TableCell><TableCell className="max-w-[360px] whitespace-normal">{resource.detalhamento_infracao || "-"}</TableCell><TableCell><Badge variant="outline" className="whitespace-normal">{resource.resultado_processo || "Não informado"}</Badge></TableCell></TableRow>) : <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">Nenhum recurso registrado.</TableCell></TableRow>}</TableBody></Table></div></CardContent></Card>
+    <Card><CardHeader><CardTitle>Serviços dos processos</CardTitle></CardHeader><CardContent><div className="overflow-hidden rounded-lg border"><Table><TableHeader><TableRow className="bg-muted/50"><TableHead>Processo</TableHead><TableHead>Serviço</TableHead><TableHead>Data</TableHead><TableHead>Hora</TableHead></TableRow></TableHeader><TableBody>{services.length ? services.map((service) => <TableRow key={service.key}><TableCell>{service.process || "-"}</TableCell><TableCell className="font-medium">{service.nome || "-"}</TableCell><TableCell>{service.data || "-"}</TableCell><TableCell>{service.hora || "-"}</TableCell></TableRow>) : <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">Nenhum serviço registrado.</TableCell></TableRow>}</TableBody></Table></div></CardContent></Card>
+  </div>;
 }
 
-function VehicleProcessesTab({
-  processos,
-  recursos,
-}: {
-  processos: FrotaProcessoVeicular[];
-  recursos: FrotaRecursoInfracao[];
-}) {
-  if (!processos.length && !recursos.length) {
-    return (
-      <EmptyTab
-        icon={FileText}
-        title="Nenhum processo registrado"
-        description="Processos, recursos e serviços retornados pela consulta automática aparecerão aqui."
-      />
-    );
-  }
-
-  return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle>Processos</CardTitle>
-          <CardDescription>Últimos processos vinculados ao veículo.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {processos.length ? (
-            processos.map((processo) => (
-              <div key={processo.id} className="rounded-lg border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-medium">
-                      {processo.processo ?? "Processo sem número"}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {processo.inicio_em ?? "-"} até {processo.final_em ?? "-"}
-                    </div>
-                  </div>
-                  <Badge variant="outline">{processo.situacao ?? "Sem status"}</Badge>
-                </div>
-                {processo.servicos.length ? (
-                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                    {processo.servicos.slice(0, 3).map((servico, index) => (
-                      <div key={`${processo.id}-${index}`}>
-                        {servico.nome ?? "Serviço"} · {servico.data ?? "-"}{" "}
-                        {servico.hora ?? ""}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Nenhum processo retornado.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recursos de infração</CardTitle>
-          <CardDescription>Indicações e recursos vinculados às multas.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {recursos.length ? (
-            recursos.map((recurso) => (
-              <div key={recurso.id} className="rounded-lg border p-3">
-                <div className="font-medium">
-                  {recurso.processo ?? "Recurso sem processo"}
-                </div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  {recurso.detalhamento_infracao ?? "Detalhamento não informado"}
-                </div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Auto: {recurso.numero_auto ?? "-"} · Resultado:{" "}
-                  {recurso.resultado_processo || "Não informado"}
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Nenhum recurso retornado.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function EmptyTab({
-  description,
-  icon: Icon,
-  title,
-}: {
-  description: string;
-  icon: typeof Car;
-  title: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="flex min-h-[260px] flex-col items-center justify-center p-8 text-center">
-        <div className="flex size-12 items-center justify-center rounded-lg border bg-muted/30">
-          <Icon className="size-6 text-muted-foreground" />
-        </div>
-        <h3 className="mt-4 text-base font-semibold">{title}</h3>
-        <p className="mt-1 max-w-md text-sm text-muted-foreground">
-          {description}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function CompactDetail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-md bg-muted/35 px-2.5 py-1.5 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="truncate text-right font-medium">{value}</span>
-    </div>
-  );
-}
-
-function MetricTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border bg-background px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="truncate text-base font-semibold leading-tight">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function VehicleStatusBadge({ status }: { status: VeiculoStatus }) {
+function VehicleStatusBadge({ status, lookupStatus }: { status: VeiculoStatus; lookupStatus?: string | null }) {
   const styles: Record<VeiculoStatus, string> = {
     active:
       "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50",
     inactive: "border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-100",
     maintenance:
       "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50",
-    consult_error: "border-red-200 bg-red-50 text-red-700 hover:bg-red-50",
+    consult_error: lookupStatus === "error" ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-50" : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50",
     processing: "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-50",
   };
   const icons = {
     active: CircleCheck,
-    consult_error: CircleX,
+    consult_error: lookupStatus === "error" ? CircleX : ClipboardCheck,
     inactive: CircleX,
     maintenance: Wrench,
-    processing: Loader2,
+    processing: LoaderCircle,
   } satisfies Record<VeiculoStatus, typeof CircleCheck>;
   const Icon = icons[status];
 
   return (
     <Badge variant="outline" className={styles[status]}>
       <Icon className={status === "processing" ? "size-3.5 animate-spin" : "size-3.5"} />
-      {formatVeiculoStatus(status)}
+      {status === "consult_error" && lookupStatus === "error" ? "Falha na consulta" : formatVeiculoStatus(status)}
     </Badge>
   );
 }

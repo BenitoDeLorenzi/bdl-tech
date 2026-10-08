@@ -1,0 +1,101 @@
+        <section hidden={etapa !== 1} aria-label="Produtos vendidos">
+          <fieldset disabled={disabled} className="space-y-3">
+            <p className="text-xs text-muted-foreground">Abra a categoria e informe as quantidades vendidas. Deixe em branco ou zero o que não foi vendido. O preço é sugerido pelo cadastro.</p>
+            <div className="max-h-[38vh] space-y-2 overflow-y-auto p-1">
+              {categorias.map((categoria, categoryIndex) => {
+                const indices = catalogo.map((p, index) => p.categoria === categoria ? index : -1).filter((index) => index >= 0);
+                const vendidos = indices.filter((index) => Number(itens[index]?.quantidade) > 0);
+                const aberta = abertas.includes(categoria);
+                return <div key={categoria} className="rounded-lg border">
+                  <Button type="button" variant="ghost" className="h-auto w-full justify-between gap-2 rounded-lg px-3 py-3 text-left" aria-expanded={aberta} aria-controls={fieldId + "categoria" + categoryIndex} onClick={() => setAbertas(aberta ? abertas.filter((c) => c !== categoria) : [...abertas, categoria])}>
+                    <span className="min-w-0 truncate font-medium">{categoria} <span className="font-normal text-muted-foreground">({indices.length})</span></span>
+                    <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground">{vendidos.length ? `${vendidos.length} vendido(s) · ${dinheiro(vendidos.reduce((sum, index) => sum + cents(itens[index].total), 0) / 100)}` : "Nenhum vendido"}</span>
+                    <ChevronDown className={`size-4 shrink-0 transition-transform ${aberta ? "rotate-180" : ""}`} />
+                  </Button>
+                  <div id={fieldId + "categoria" + categoryIndex} hidden={!aberta} className="space-y-3 border-t p-3">
+                    {indices.map((index) => {
+                      const produto = catalogo[index];
+                      const err = errors.itens?.[index];
+                      const vendido = () => Number(form.getValues(`itens.${index}.quantidade`)) > 0;
+                      return <div key={produto.id} className="grid items-start gap-3 border-b pb-3 last:border-0 last:pb-0 sm:grid-cols-[minmax(120px,1fr)_95px_130px_130px]">
+                        <div className="sm:pt-6"><p className="text-sm font-medium">{produto.nome}</p><p className="text-xs text-muted-foreground">{produto.unidade}</p></div>
+                        <Field data-invalid={Boolean(err?.quantidade)}>
+                          <FieldLabel className="text-xs" htmlFor={fieldId + "qtd" + index}>Quantidade</FieldLabel>
+                          <Input id={fieldId + "qtd" + index} aria-label={`Quantidade de ${produto.nome}`} aria-invalid={Boolean(err?.quantidade)} type="number" inputMode="decimal" step="0.001" placeholder="0" {...form.register(`itens.${index}.quantidade`, {
+                            onChange: (e) => {
+                              revalidarErro(`itens.${index}.quantidade`);
+                              recalcular(index, e.target.value, form.getValues(`itens.${index}.preco_unitario`));
+                              if (!e.target.value || Number(e.target.value) === 0) form.clearErrors([`itens.${index}.preco_unitario`, `itens.${index}.total`]);
+                              if (form.getFieldState("itens.root").error) validarProdutos();
+                            },
+                            validate: (v) => !v || (/^\d+(\.\d{1,3})?$/.test(v) && Number(v) >= 0 && Number(v) <= 999999999) || "Informe uma quantidade válida.",
+                          })} />
+                          <FieldError errors={[err?.quantidade]} />
+                        </Field>
+                        <Field data-invalid={Boolean(err?.preco_unitario)}>
+                          <FieldLabel className="text-xs" htmlFor={fieldId + "preco" + index}>Preço unitário</FieldLabel>
+                          <Controller control={form.control} name={`itens.${index}.preco_unitario`} rules={{ validate: (v) => !vendido() || valorValido(v) || "Informe o preço." }} render={({ field }) => <CurrencyInput id={fieldId + "preco" + index} aria-label={`Preço de ${produto.nome}`} aria-invalid={Boolean(err?.preco_unitario)} value={field.value} onBlur={field.onBlur} ref={field.ref} disabled={disabled} onValueChange={(v) => { alterarCampo(field.name, v); recalcular(index, form.getValues(`itens.${index}.quantidade`), v); }} />} />
+                          <FieldError errors={[err?.preco_unitario]} />
+                        </Field>
+                        <Field data-invalid={Boolean(err?.total)}>
+                          <FieldLabel className="text-xs" htmlFor={fieldId + "total" + index}>Total vendido</FieldLabel>
+                          <Controller control={form.control} name={`itens.${index}.total`} rules={{ validate: (v) => !vendido() || valorValido(v) || "Informe o total." }} render={({ field }) => <CurrencyInput id={fieldId + "total" + index} aria-label={`Total de ${produto.nome}`} aria-invalid={Boolean(err?.total)} value={field.value} onBlur={field.onBlur} ref={field.ref} disabled={disabled} onValueChange={(v) => alterarCampo(field.name, v)} />} />
+                          <FieldError errors={[err?.total]} />
+                        </Field>
+                      </div>;
+                    })}
+                  </div>
+                </div>;
+              })}
+              {!catalogo.length && <p className="py-6 text-center text-sm text-muted-foreground">Cadastre produtos para registrar as vendas.</p>}
+            </div>
+            <FieldError errors={[errors.itens?.root]} />
+            <p className="text-right text-sm">Total vendido: <strong className="tabular-nums">{dinheiro(total / 100)}</strong></p>
+          </fieldset>
+        </section>
+        <section hidden={etapa !== 2} aria-label="Distribuição dos recebimentos">
+          <fieldset disabled={disabled} className="space-y-3">
+            <p className="text-xs text-muted-foreground">Informe os valores brutos. A taxa é descontada automaticamente do líquido. Deixe em branco as formas não utilizadas.</p>
+            <div className="max-h-[38vh] space-y-3 overflow-y-auto p-1">
+              {pagamentos.map((p, index) => {
+                const err = errors.pagamentos?.[index];
+                const liquido = recebimentoLiquido(Number(p.valor || 0), Number(p.taxa_percentual.replace(",", ".") || 0));
+                return <div key={index} className="grid items-start gap-3 border-b pb-3 last:border-0 sm:grid-cols-[minmax(110px,1fr)_90px_140px_140px]">
+                  <div className="sm:pt-5"><p className="text-sm font-medium">{p.forma}</p>
+                    <Input className="mt-1 h-8 text-xs" aria-label={`Origem de ${p.forma} ${index + 1}`} aria-invalid={Boolean(err?.origem)} placeholder="Maquininha / conta / caixa" {...form.register(`pagamentos.${index}.origem`, { onChange: () => revalidarErro(`pagamentos.${index}.origem`), validate: (v) => Number(form.getValues(`pagamentos.${index}.valor`)) <= 0 || (v.trim().length > 0 && v.length <= 120) || "Informe a origem (até 120 caracteres)." })} />
+                    <FieldError errors={[err?.origem]} />
+                  </div>
+                  <Field data-invalid={Boolean(err?.taxa_percentual)}>
+                    <FieldLabel className="text-xs" htmlFor={fieldId + "taxa" + index}>Taxa (%)</FieldLabel>
+                    <Input id={fieldId + "taxa" + index} aria-label={`Taxa de ${p.forma} ${index + 1}`} aria-invalid={Boolean(err?.taxa_percentual)} inputMode="decimal" placeholder="0" {...form.register(`pagamentos.${index}.taxa_percentual`, { onChange: () => revalidarErro(`pagamentos.${index}.taxa_percentual`), validate: (v) => !v || (/^\d+([.,]\d{1,2})?$/.test(v) && Number(v.replace(",", ".")) <= 100) || "Use de 0 a 100%." })} />
+                    <FieldError errors={[err?.taxa_percentual]} />
+                  </Field>
+                  <Field data-invalid={Boolean(err?.valor)}>
+                    <FieldLabel className="text-xs" htmlFor={fieldId + "bruto" + index}>Valor bruto</FieldLabel>
+                    <Controller control={form.control} name={`pagamentos.${index}.valor`} rules={{ validate: (v) => !v || valorValido(v) || "Informe um valor válido." }} render={({ field }) => <CurrencyInput id={fieldId + "bruto" + index} aria-label={`Valor bruto de ${p.forma} ${index + 1}`} aria-invalid={Boolean(err?.valor)} value={field.value} ref={field.ref} onBlur={field.onBlur} disabled={disabled} onValueChange={(v) => { alterarCampo(field.name, v); revalidarErro(`pagamentos.${index}.origem`); }} />} />
+                    <FieldError errors={[err?.valor]} />
+                  </Field>
+                  <Field><FieldLabel className="text-xs" htmlFor={fieldId + "liquido" + index}>Valor líquido</FieldLabel><Input id={fieldId + "liquido" + index} aria-label={`Valor líquido de ${p.forma} ${index + 1}`} readOnly value={dinheiro(liquido.liquido / 100)} className="bg-muted/50 tabular-nums" /></Field>
+                </div>;
+              })}
+            </div>
+            <div className="flex flex-wrap justify-between gap-2 text-sm"><span>Bruto: <strong>{dinheiro(recebido / 100)}</strong></span><span>Taxas: <strong>{dinheiro(taxas / 100)}</strong></span><span>Líquido: <strong>{dinheiro((recebido - taxas) / 100)}</strong></span></div>
+          </fieldset>
+        </section>
+        <section hidden={etapa !== 3} aria-label="Despesas do fechamento">
+          <fieldset disabled={disabled} className="space-y-3">
+            <p className="text-xs text-muted-foreground">Registre os gastos deste fechamento, como compras e comissões. Esta etapa é opcional.</p>
+            <div className="max-h-[38vh] space-y-3 overflow-y-auto p-1">
+              {despesasArray.fields.map((row, index) => {
+                const err = errors.despesas?.[index];
+                return <div key={row.id} className="grid items-start gap-3 sm:grid-cols-[minmax(0,1fr)_160px_32px]">
+                  <Field data-invalid={Boolean(err?.descricao)}><FieldLabel htmlFor={fieldId + "despesa" + index}>Descrição</FieldLabel><Input id={fieldId + "despesa" + index} aria-invalid={Boolean(err?.descricao)} placeholder="Ex.: Compra de gelo" {...form.register(`despesas.${index}.descricao`, { onChange: () => revalidarErro(`despesas.${index}.descricao`), validate: (v) => (v.trim().length >= 2 && v.trim().length <= 200) || "Descreva a despesa (2 a 200 caracteres)." })} /><FieldError errors={[err?.descricao]} /></Field>
+                  <Field data-invalid={Boolean(err?.valor)}><FieldLabel htmlFor={fieldId + "despesaValor" + index}>Valor</FieldLabel><Controller control={form.control} name={`despesas.${index}.valor`} rules={{ validate: (v) => (valorValido(v) && Number(v) > 0) || "Informe um valor positivo." }} render={({ field }) => <CurrencyInput id={fieldId + "despesaValor" + index} aria-label={`Valor da despesa ${index + 1}`} aria-invalid={Boolean(err?.valor)} value={field.value} ref={field.ref} onBlur={field.onBlur} disabled={disabled} onValueChange={(v) => alterarCampo(field.name, v)} />} /><FieldError errors={[err?.valor]} /></Field>
+                  <Button type="button" variant="ghost" size="icon" className="sm:mt-6" aria-label={`Remover despesa ${index + 1}`} disabled={disabled} onClick={() => despesasArray.remove(index)}><Trash2 className="size-4" /></Button>
+                </div>;
+              })}
+              {!despesas.length && <p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">Nenhuma despesa adicionada.</p>}
+            </div>
+            <div className="flex items-center justify-between gap-2"><Button type="button" variant="outline" size="sm" disabled={disabled || despesas.length >= 100} onClick={() => despesasArray.append({ descricao: "", valor: "" })}><Plus className="size-4" />Adicionar despesa</Button><span className="text-sm">Total: <strong>{dinheiro(totalDespesas / 100)}</strong></span></div>
+          </fieldset>
+        </section>

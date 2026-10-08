@@ -225,7 +225,7 @@ export default async function LicencasPage({ searchParams }: PageProps) {
                   <div>
                     <CardTitle>Lista de licenças</CardTitle>
                     <CardDescription>
-                      Módulos liberados por prefeitura e vigência contratada.
+                      Módulos liberados por empresa e vigência contratada.
                     </CardDescription>
                   </div>
                 </div>
@@ -238,7 +238,7 @@ export default async function LicencasPage({ searchParams }: PageProps) {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead>Prefeitura</TableHead>
+                        <TableHead>Empresa</TableHead>
                         <TableHead>Módulo</TableHead>
                         <TableHead>Vigência</TableHead>
                         <TableHead>Cobrança</TableHead>
@@ -353,7 +353,7 @@ export default async function LicencasPage({ searchParams }: PageProps) {
                   </h3>
                   <p className="mt-1 max-w-md text-sm text-muted-foreground">
                     Cadastre uma licença para liberar um módulo para uma
-                    prefeitura.
+                    empresa.
                   </p>
                   <Dialog>
                     <DialogTrigger

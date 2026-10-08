@@ -1,0 +1,42 @@
+begin;
+do $$
+declare a uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); e uuid:=gen_random_uuid();u uuid;m uuid;cat uuid;p uuid;c uuid:=gen_random_uuid();f uuid:=gen_random_uuid();f2 uuid:=gen_random_uuid();x jsonb;
+begin
+ insert into auth.users(id,email) values(a,a||'@delete.test'),(b,b||'@delete.test');
+ insert into public.empresas(id,nome,status) values(e,'Exclusão teste','active');
+ insert into public.perfis(id,nome,role,ativo,prefeitura_id) values(a,'Master','bdl_admin',true,e),(b,'Admin','municipal_admin',true,e);
+ select id into m from public.modulos where slug='gestao-estabelecimentos';
+ insert into public.licencas(prefeitura_id,modulo_id,status,inicio,fim,valor_anual) values(e,m,'active',current_date-10,current_date+1,0);
+ select id into u from public.gestao_unidades where empresa_id=e;
+ select id into cat from public.gestao_categorias where empresa_id=e limit 1;
+ p:=public.gestao_operar(a,'produto',jsonb_build_object('unidade_id',u,'nome','Água teste','categoria_id',cat,'unidade','un','preco',5,'minimo',0));
+ perform public.gestao_operar(a,'movimento',jsonb_build_object('unidade_id',u,'produto_id',p,'tipo','entrada','quantidade',100,'motivo','Entrada teste'));
+ perform public.gestao_equipe_operar(a,'colaborador',jsonb_build_object('id',c,'unidade_id',u,'nome','Ana teste','funcao','Atendente','valor',100));
+ x:=jsonb_build_object('id',f,'unidade_id',u,'versao',0,'data',current_date-1,'turno','dia','origem','teste','itens',jsonb_build_array(jsonb_build_object('produto_id',p,'quantidade',10,'cortesia',2,'preco_unitario',5,'total',50)),'pagamentos',jsonb_build_array(jsonb_build_object('forma','Dinheiro','origem','Caixa','valor',50)),'despesas',jsonb_build_array(jsonb_build_object('descricao','Gelo teste','valor',5)),'equipe',jsonb_build_array(jsonb_build_object('colaborador_id',c,'presente',true,'valor_trabalho',100,'valor_pago',20)));
+ perform public.gestao_operar(a,'salvar',x);
+ begin perform public.gestao_excluir_fechamento(b,u,f,1);raise exception 'FAIL admin';exception when raise_exception then if sqlerrm not like '%Somente o usuário Master%' then raise;end if;end;
+ begin perform public.gestao_excluir_rascunho(b,u,f,1);raise exception 'FAIL old entry';exception when raise_exception then if sqlerrm not like '%Somente o usuário Master%' then raise;end if;end;
+ begin perform public.gestao_excluir_fechamento(a,u,f,0);raise exception 'FAIL version';exception when raise_exception then if sqlerrm not like '%alterado%' then raise;end if;end;
+ begin perform public.gestao_excluir_fechamento(a,gen_random_uuid(),f,1);raise exception 'FAIL scope';exception when raise_exception then if sqlerrm not like '%sem acesso%' then raise;end if;end;
+ perform public.gestao_operar(a,'confirmar',jsonb_build_object('id',f,'unidade_id',u,'versao',1));
+ perform public.gestao_operar(a,'salvar',x||jsonb_build_object('id',f2,'data',current_date));
+ perform public.gestao_operar(a,'confirmar',jsonb_build_object('id',f2,'unidade_id',u,'versao',1));
+ begin perform public.gestao_excluir_fechamento(a,u,f,2);raise exception 'FAIL dependency';exception when raise_exception then if sqlerrm not like '%lançamentos posteriores%' then raise;end if;end;
+ if (select saldo from public.gestao_produtos where id=p)<>76 then raise exception 'FAIL atomic rollback';end if;
+ perform public.gestao_excluir_fechamento(a,u,f2,2);
+ if (select saldo from public.gestao_produtos where id=p)<>88 then raise exception 'FAIL sale and courtesy reversal';end if;
+ if exists(select 1 from public.gestao_fechamentos where id=f2) or exists(select 1 from public.gestao_movimentos where fechamento_id=f2) or exists(select 1 from public.gestao_equipe_extrato where fechamento_id=f2) or exists(select 1 from public.gestao_fechamento_equipe where fechamento_id=f2) then raise exception 'FAIL linked records';end if;
+ if (select sum(case when tipo='trabalho' then valor else -valor end) from public.gestao_equipe_extrato where colaborador_id=c and not estornado)<>80 then raise exception 'FAIL team balance';end if;
+ perform public.gestao_operar(a,'reabrir',jsonb_build_object('id',f,'unidade_id',u,'versao',2,'motivo','Teste reaberto'));
+ perform public.gestao_excluir_fechamento(a,u,f,3);
+ if (select saldo from public.gestao_produtos where id=p)<>100 then raise exception 'FAIL reopened double reversal';end if;
+ if not exists(select 1 from public.gestao_auditoria where registro_id=f and acao='excluir_rascunho') then raise exception 'FAIL audit';end if;
+ begin perform public.gestao_operar(a,'salvar',x);raise exception 'FAIL resurrection';exception when raise_exception then if sqlerrm not like '%excluído%' then raise;end if;end;
+ f:=gen_random_uuid();perform public.gestao_operar(a,'salvar',x||jsonb_build_object('id',f));
+ perform public.gestao_excluir_fechamento(a,u,f,1);
+ if (select saldo from public.gestao_produtos where id=p)<>100 then raise exception 'FAIL draft stock';end if;
+ if has_function_privilege('authenticated','public.gestao_excluir_fechamento(uuid,uuid,uuid,integer)','EXECUTE') or has_function_privilege('anon','public.gestao_excluir_fechamento(uuid,uuid,uuid,integer)','EXECUTE') then raise exception 'FAIL grants';end if;
+end $$;
+select 'PASS: Master-only and legacy endpoint, version/scope checks, dependent deletion rollback, sold/courtesy stock reversal, team balance and linked cleanup, draft/reopened deletion, audit/tombstone, direct API denied' result;
+rollback;
+
