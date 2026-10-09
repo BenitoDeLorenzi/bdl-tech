@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 async function run(spoof, company = 'company') {
  let inserted;
- const db = { from(table) {
+ const db = { rpc: async()=>({data:"OA-20261009-0005"}), from(table) {
   let writing = false;
   const q = { select() { return q; }, eq() { return q; }, update() { return q; }, lte() { return Promise.resolve({}); }, gte() { return Promise.resolve({count:0}); }, maybeSingle() { return Promise.resolve({data:null}); }, insert(payload) { writing = true; inserted = payload; return q; }, single() {
    if (table === 'frota_veiculos') return Promise.resolve({data:{id:'vehicle',prefeitura_id:company}});

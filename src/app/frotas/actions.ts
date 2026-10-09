@@ -922,7 +922,12 @@ export async function createAbastecimento(
     };
   }
 
-  const numeroOrdem = await generateFuelOrderNumber(supabase);
+  let numeroOrdem: string;
+  try {
+    numeroOrdem = await generateFuelOrderNumber(supabase);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Não foi possível gerar o número da ordem." };
+  }
   const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
   const { data: createdOrder, error } = await supabase
     .from("frota_abastecimentos")
@@ -1900,19 +1905,9 @@ function parseDecimalValue(value: string) {
 async function generateFuelOrderNumber(
   supabase: ReturnType<typeof createSupabaseServerClient>
 ) {
-  const today = new Date();
-  const prefix = [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, "0"),
-    String(today.getDate()).padStart(2, "0"),
-  ].join("");
-
-  const { count } = await supabase
-    .from("frota_abastecimentos")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", `${today.toISOString().slice(0, 10)}T00:00:00.000Z`);
-
-  return `OA-${prefix}-${String((count ?? 0) + 1).padStart(4, "0")}`;
+  const { data, error } = await supabase.rpc("next_fuel_order_number");
+  if (error || !data) throw new Error("Não foi possível gerar o número da ordem. Tente novamente.");
+  return data as string;
 }
 
 async function getAbastecimentoForPrint(id: string): Promise<FrotaAbastecimento> {
