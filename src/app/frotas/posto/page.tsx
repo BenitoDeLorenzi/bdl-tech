@@ -1,3 +1,5 @@
+import { PostoHistory } from "./posto-history";
+import { filterPostoHistory, validHistoryDate } from "@/lib/posto-history";
 import { OrdensRealtime } from "./ordens-realtime";
 import Link from "next/link";
 import { ListMetrics } from "@/components/list-metrics";
@@ -45,19 +47,27 @@ export const dynamic = "force-dynamic";
 type PageProps = {
   searchParams: Promise<{
     q?: string;
+    tab?: string;
+    from?: string;
+    to?: string;
   }>;
 };
 
 export default async function PortalPostoPage({ searchParams }: PageProps) {
   const session = await requirePostoSession();
   const params = await searchParams;
+  const history = params.tab === "history";
+  const from = validHistoryDate(params.from);
+  const to = validHistoryDate(params.to);
   const data = await getAbastecimentosData({
     postoId: session.id,
     prefeituraId: session.prefeitura_id,
     query: params.q,
-    status: "issued",
+    completedFrom: history ? from : undefined,
+    completedTo: history ? to : undefined,
+    status: history ? "completed" : "issued",
   });
-  const ordens = data.abastecimentos;
+  const ordens = history ? filterPostoHistory(data.abastecimentos, session.id, session.prefeitura_id, from, to) : data.abastecimentos;
   const nextExpiry = ordens.map(item => item.expires_at).filter((value): value is string => Boolean(value)).sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null;
   const prefeitura = data.prefeituras.find(
     (item) => item.id === session.prefeitura_id
@@ -130,6 +140,11 @@ export default async function PortalPostoPage({ searchParams }: PageProps) {
           </div>
         </header>
 
+        <nav aria-label="Abastecimentos do posto" className="flex w-fit flex-wrap gap-1 rounded-lg bg-muted p-1">
+          <Link href="/frotas/posto" aria-current={!history ? "page" : undefined} className={buttonVariants({ variant: history ? "ghost" : "default", size: "sm" })}>Pendentes</Link>
+          <Link href="/frotas/posto?tab=history" aria-current={history ? "page" : undefined} className={buttonVariants({ variant: history ? "default" : "ghost", size: "sm" })}>Histórico de abastecimentos</Link>
+        </nav>
+        {history ? <PostoHistory orders={ordens} q={params.q} from={from} to={to} /> : <>
         <section className="grid gap-3 md:grid-cols-3">
           <SummaryCard
             icon={ReceiptText}
@@ -181,6 +196,7 @@ export default async function PortalPostoPage({ searchParams }: PageProps) {
             )}
           </CardContent>
         </Card>
+        </>}
       </div>
     </main>
   );
@@ -254,7 +270,7 @@ function OrdemPostoCard({ ordem }: { ordem: FrotaAbastecimento }) {
         </div>
         <Dialog>
           <DialogTrigger className={buttonVariants({ className: "h-10 w-full gap-2 md:w-auto" })}><CircleCheck className="size-4" />Concluir abastecimento</DialogTrigger>
-          <DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Concluir abastecimento</DialogTitle><DialogDescription>Informe os dados reais do abastecimento de {ordem.placa}.</DialogDescription></DialogHeader><AbastecimentoCompleteForm abastecimento={ordem} /></DialogContent>
+          <DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Concluir abastecimento</DialogTitle><DialogDescription>Informe os dados reais do abastecimento de {ordem.placa}.</DialogDescription></DialogHeader><AbastecimentoCompleteForm portalPosto abastecimento={ordem} /></DialogContent>
         </Dialog>
       </div>
       <div className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">

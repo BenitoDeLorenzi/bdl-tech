@@ -1,3 +1,5 @@
+import { getFrotasLoadingData } from "@/app/frotas/frotas-loading-data";
+import { TableLoadingRows } from "@/components/table-loading";
 import { CancellationDetails } from "@/components/cancellation-details";
 import { CancelFrotaDialog } from "@/components/cancel-frota-dialog";
 import { DeleteAbastecimentoButton } from "./delete-abastecimento-button";
@@ -67,9 +69,11 @@ import { cn } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 type PageProps = {
+  loading?: boolean;
   searchParams: Promise<{
     prefeitura?: string;
     q?: string;
+    ordem?: string;
     status?: string;
   }>;
 };
@@ -82,7 +86,7 @@ const statusFilters = [
   { label: "Vencidas", status: "expired" },
 ];
 
-export default async function AbastecimentoPage({ searchParams }: PageProps) {
+export default async function AbastecimentoPage({ searchParams, loading = false }: PageProps) {
   const profile = await requireUserProfile();
   const access = await getFrotasPermissionAccess(profile);
 
@@ -91,7 +95,7 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
     profile.role === "bdl_admin"
       ? params.prefeitura
       : profile.prefeitura_id ?? undefined;
-  const data = await getAbastecimentosData({
+  const data = loading ? await getFrotasLoadingData(profile, prefeituraId) : await getAbastecimentosData({
     prefeituraId,
     query: params.q,
     status: params.status,
@@ -127,6 +131,7 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
 
   return (
     <FrotasShell
+      loading={loading}
       active="abastecimento"
       actions={
         <AbastecimentoToolbar
@@ -155,6 +160,7 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
                 </div>
               </div>
               <ListMetrics
+                loading={loading}
                 items={[
                   { label: "Total", value: data.abastecimentos.length },
                 ]}
@@ -162,7 +168,7 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
             </div>
           </CardHeader>
           <CardContent>
-            {data.abastecimentos.length ? (
+            {loading || data.abastecimentos.length ? (
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -181,7 +187,7 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.abastecimentos.map((abastecimento) => (
+                    {loading ? <TableLoadingRows columns={9} /> : data.abastecimentos.map((abastecimento) => (
                       <TableRow key={abastecimento.id}>
                         <TableCell className="font-medium">
                           {abastecimento.numero_ordem}
@@ -222,6 +228,7 @@ export default async function AbastecimentoPage({ searchParams }: PageProps) {
                         </TableCell>
                         <TableCell>
                           <AbastecimentoActions
+                            openDetails={params.ordem === abastecimento.id}
                             access={access}
                             canDelete={profile.role === "bdl_admin"}
                             abastecimento={abastecimento}
@@ -342,17 +349,19 @@ function AbastecimentoToolbar({
 }
 
 function AbastecimentoActions({
+  openDetails,
   canDelete,
   access,
   abastecimento,
 }: {
+  openDetails?: boolean;
   canDelete: boolean;
   access: Awaited<ReturnType<typeof getFrotasPermissionAccess>>;
   abastecimento: FrotaAbastecimento;
 }) {
   return (
     <div className="flex justify-end gap-1">
-      <Dialog>
+      <Dialog defaultOpen={openDetails}>
         <Tooltip>
           <TooltipTrigger
             render={

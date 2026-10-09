@@ -128,6 +128,8 @@ export async function createUsoVeiculo(
   }
 
   const { error } = await supabase.from("frota_uso_veiculos").insert({
+    atividade_por: profile.nome,
+    atividade_usuario_id: profile.id,
     created_by: profile.id,
     destino,
     finalidade,
@@ -210,20 +212,22 @@ export async function returnUsoVeiculo(
     };
   }
 
-  const { error: updateError } = await supabase
+  const { data: returned, error: updateError } = await supabase
     .from("frota_uso_veiculos")
     .update({
       data_retorno: new Date().toISOString(),
       km_retorno: kmRetorno,
       observacoes_retorno: observacoesRetorno,
       returned_by: profile.id,
+      atividade_por: profile.nome,
+      atividade_usuario_id: profile.id,
       status: "returned",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", uso.id);
+    .eq("id", uso.id).eq("status", "in_use").select("id").maybeSingle();
 
-  if (updateError) {
-    return { error: formatUsoVeiculoError(updateError.message) };
+  if (updateError || !returned) {
+    return { error: formatUsoVeiculoError(updateError?.message ?? "Não foi possível devolver. Atualize a lista e tente novamente.") };
   }
 
   const { error: veiculoError } = await supabase
@@ -255,7 +259,7 @@ export async function cancelUsoVeiculo(_previousState: UsoVeiculoActionState, fo
   if (registro.status !== "in_use") return { error: "Somente registros abertos podem ser cancelados." };
   const now = new Date().toISOString();
   const { data: cancelled, error } = await supabase.from("frota_uso_veiculos")
-    .update({ status: "cancelled", motivo_cancelamento: motivo, cancelled_at: now, updated_at: now })
+    .update({ status: "cancelled", motivo_cancelamento: motivo, cancelled_at: now, updated_at: now, atividade_por: profile.nome, atividade_usuario_id: profile.id })
     .eq("id", id).eq("prefeitura_id", registro.prefeitura_id).eq("status", "in_use").select("id").maybeSingle();
   if (error || !cancelled) return { error: "Não foi possível cancelar. Atualize a lista e tente novamente." };
   revalidateUsoVeiculoPaths();

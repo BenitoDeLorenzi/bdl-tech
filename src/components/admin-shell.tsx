@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { type LucideIcon } from "lucide-react";
 
 import { AdminSidebar } from "@/components/admin-sidebar";
+import { SupportLiveProvider } from "@/components/support/support-live";
 import { HeaderSeparator } from "@/components/header-separator";
 import {
   SidebarInset,
@@ -17,6 +18,7 @@ type AdminShellProps = {
     | "licencas"
     | "usuarios"
     | "modulos"
+    | "atendimentos"
     | "integracoes";
   actions?: ReactNode;
   children: ReactNode;
@@ -34,7 +36,7 @@ export function AdminShell({
   title,
 }: AdminShellProps) {
   return (
-    <SidebarProvider className="h-screen min-h-0 overflow-hidden">
+    <SupportLiveProvider master><SidebarProvider className="h-screen min-h-0 overflow-hidden">
       <AdminSidebar active={active} profile={profile} />
 
       <SidebarInset className="min-h-0 overflow-hidden">
@@ -56,6 +58,6 @@ export function AdminShell({
 
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </SidebarInset>
-    </SidebarProvider>
+    </SidebarProvider></SupportLiveProvider>
   );
 }

@@ -1,3 +1,5 @@
+import { getFrotasLoadingData } from "@/app/frotas/frotas-loading-data";
+import { TableLoadingRows } from "@/components/table-loading";
 import { DeleteCadastroButton } from "@/components/delete-cadastro-button";
 import { deletePosto, updatePostoStatus } from "../cadastro-actions";
 import { ListMetrics } from "@/components/list-metrics";
@@ -54,20 +56,21 @@ import { getPostosCredenciadosData } from "@/lib/frotas-data";
 export const dynamic = "force-dynamic";
 
 type PageProps = {
+  loading?: boolean;
   searchParams: Promise<{
     prefeitura?: string;
     q?: string;
   }>;
 };
 
-export default async function PostosPage({ searchParams }: PageProps) {
+export default async function PostosPage({ searchParams, loading = false }: PageProps) {
   const profile = await requireUserProfile();
   const params = await searchParams;
   const prefeituraId =
     profile.role === "bdl_admin"
       ? params.prefeitura
       : profile.prefeitura_id ?? undefined;
-  const data = await getPostosCredenciadosData({
+  const data = loading ? await getFrotasLoadingData(profile, prefeituraId) : await getPostosCredenciadosData({
     prefeituraId,
     query: params.q,
   });
@@ -75,6 +78,7 @@ export default async function PostosPage({ searchParams }: PageProps) {
 
   return (
     <FrotasShell
+      loading={loading}
       active="postos"
       actions={
         <div className="flex w-full min-w-0 items-center justify-end gap-2">
@@ -159,6 +163,7 @@ export default async function PostosPage({ searchParams }: PageProps) {
                 </div>
               </div>
               <ListMetrics
+                loading={loading}
                 items={[
                   { label: "Total", value: data.postos.length },
                 ]}
@@ -166,7 +171,7 @@ export default async function PostosPage({ searchParams }: PageProps) {
             </div>
           </CardHeader>
           <CardContent>
-            {data.postos.length ? (
+            {loading || data.postos.length ? (
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -181,7 +186,7 @@ export default async function PostosPage({ searchParams }: PageProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.postos.map((posto) => (
+                    {loading ? <TableLoadingRows columns={5} /> : data.postos.map((posto) => (
                       <TableRow key={posto.id}>
                         <TableCell>
                           <div className="font-medium">{posto.nome}</div>

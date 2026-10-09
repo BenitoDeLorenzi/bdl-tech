@@ -1,3 +1,5 @@
+import { getFrotasLoadingData } from "@/app/frotas/frotas-loading-data";
+import { TableLoadingRows } from "@/components/table-loading";
 import { CancellationDetails } from "@/components/cancellation-details";
 import { CancelFrotaDialog } from "@/components/cancel-frota-dialog";
 import { ListStatusActionButton } from "@/components/list-status-action-button";
@@ -68,11 +70,13 @@ import { UsoVeiculoForm } from "./uso-veiculo-form";
 export const dynamic = "force-dynamic";
 
 type PageProps = {
+  loading?: boolean;
   searchParams: Promise<{
     cancelled?: string;
     error?: string;
     prefeitura?: string;
     q?: string;
+    registro?: string;
     status?: string;
   }>;
 };
@@ -84,7 +88,7 @@ const statusFilters = [
   { label: "Cancelados", status: "cancelled" },
 ];
 
-export default async function UsoVeiculoPage({ searchParams }: PageProps) {
+export default async function UsoVeiculoPage({ searchParams, loading = false }: PageProps) {
   const profile = await requireUserProfile();
   const access = await getFrotasPermissionAccess(profile);
 
@@ -97,7 +101,8 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
     profile.role === "bdl_admin"
       ? params.prefeitura
       : profile.prefeitura_id ?? undefined;
-  const data = await getUsoVeiculosData({
+  const data = loading ? await getFrotasLoadingData(profile, prefeituraId) : await getUsoVeiculosData({
+    registroId: params.registro,
     prefeituraId,
     query: params.q,
     status: params.status,
@@ -133,6 +138,7 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
 
   return (
     <FrotasShell
+      loading={loading}
       active="uso-veiculo"
       actions={
         <UsoVeiculoToolbar
@@ -161,6 +167,7 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
                 </div>
               </div>
               <ListMetrics
+                loading={loading}
                 items={[
                   { label: "Em uso", value: data.metricas.emUso, tone: "inUse" },
                   { label: "Devolvidos", value: data.metricas.devolvidos, tone: "success" },
@@ -170,7 +177,7 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
             </div>
           </CardHeader>
           <CardContent>
-            {data.usos.length ? (
+            {loading || data.usos.length ? (
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -187,7 +194,7 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.usos.map((uso) => (
+                    {loading ? <TableLoadingRows columns={7} /> : data.usos.map((uso) => (
                       <TableRow key={uso.id}>
                         <TableCell>
                           <div className="min-w-[180px]">
@@ -238,7 +245,7 @@ export default async function UsoVeiculoPage({ searchParams }: PageProps) {
                           <UsoStatusBadge status={uso.status} />
                         </TableCell>
                         <TableCell>
-                          <UsoVeiculoActions access={access} uso={uso} canDelete={profile.role === "bdl_admin"} />
+                          <UsoVeiculoActions openDetails={params.registro === uso.id} access={access} uso={uso} canDelete={profile.role === "bdl_admin"} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -272,7 +279,7 @@ function UsoVeiculoToolbar({
   data: Awaited<ReturnType<typeof getUsoVeiculosData>>;
   params: Awaited<PageProps["searchParams"]>;
 }) {
-  const hasActiveFilters = Boolean(params.q?.trim() || params.status || params.prefeitura);
+  const hasActiveFilters = Boolean(params.q?.trim() || params.status || params.prefeitura || params.registro);
 
   return (
     <div className="flex w-full min-w-0 items-center justify-end gap-2">
@@ -364,17 +371,19 @@ function UsoVeiculoToolbar({
 }
 
 function UsoVeiculoActions({
+  openDetails = false,
   access,
   uso,
   canDelete,
 }: {
+  openDetails?: boolean;
   canDelete: boolean;
   access: Awaited<ReturnType<typeof getFrotasPermissionAccess>>;
   uso: FrotaUsoVeiculo;
 }) {
   return (
     <div className="flex justify-end gap-1">
-      <Dialog>
+      <Dialog defaultOpen={openDetails}>
         <Tooltip>
           <TooltipTrigger
             render={

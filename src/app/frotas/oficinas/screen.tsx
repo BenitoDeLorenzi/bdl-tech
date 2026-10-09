@@ -1,3 +1,5 @@
+import { getFrotasLoadingData } from "@/app/frotas/frotas-loading-data";
+import { TableLoadingRows } from "@/components/table-loading";
 import { CadastroStatusButton } from "@/components/cadastro-status-button";
 import { updateOficinaStatus } from "../cadastro-actions";
 import { redirect } from "next/navigation";
@@ -27,7 +29,9 @@ import { OficinaDialog } from "./oficina-dialog";
 export const dynamic = "force-dynamic";
 export default async function OficinasPage({
   searchParams,
+  loading = false,
 }: {
+  loading?: boolean;
   searchParams: Promise<{ prefeitura?: string; q?: string }>;
 }) {
   const profile = await requireUserProfile();
@@ -37,13 +41,13 @@ export default async function OficinasPage({
   if (!canManage && !access.keys.includes("workshops.read"))
     redirect("/frotas");
   const params = await searchParams;
-  const data = await getFrotasData({
+  const data = loading ? await getFrotasLoadingData(profile, params.prefeitura) : await getFrotasData({
     prefeituraId:
       profile.role === "bdl_admin"
         ? params.prefeitura
         : (profile.prefeitura_id ?? undefined),
   });
-  const all = await getOficinasForEmpresa(data.selectedPrefeituraId);
+  const all = loading ? [] : await getOficinasForEmpresa(data.selectedPrefeituraId);
   const normalize = (value: string) =>
     value
       .normalize("NFD")
@@ -69,6 +73,7 @@ export default async function OficinasPage({
   );
   return (
     <FrotasShell
+      loading={loading}
       active="oficinas"
       title="Oficinas"
       icon={Wrench}
@@ -117,6 +122,7 @@ export default async function OficinasPage({
                 <CardTitle>Oficinas cadastradas</CardTitle>
               </div>
               <ListMetrics
+                loading={loading}
                 items={[
                   { label: "Total", value: oficinas.length },
                   {
@@ -130,7 +136,7 @@ export default async function OficinasPage({
             </div>
           </CardHeader>
           <CardContent>
-            {oficinas.length ? (
+            {loading || oficinas.length ? (
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -146,7 +152,7 @@ export default async function OficinasPage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {oficinas.map((item) => (
+                    {loading ? <TableLoadingRows columns={6} /> : oficinas.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="font-medium">{item.nome}</div>

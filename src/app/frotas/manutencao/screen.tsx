@@ -1,9 +1,12 @@
+import { getFrotasLoadingData } from "@/app/frotas/frotas-loading-data";
+import { TableLoadingRows } from "@/components/table-loading";
 import { CancellationDetails } from "@/components/cancellation-details";
 import { CancelFrotaDialog } from "@/components/cancel-frota-dialog";
 import { DeleteManutencaoButton } from "./delete-manutencao-button";
 import { ListStatusActionButton } from "@/components/list-status-action-button";
 import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   CalendarClock,
   CircleAlert,
@@ -67,11 +70,13 @@ import { ManutencaoForm } from "../manutencao-form";
 export const dynamic = "force-dynamic";
 
 type PageProps = {
+  loading?: boolean;
   searchParams: Promise<{
     cancelled?: string;
     error?: string;
     prefeitura?: string;
     q?: string;
+    registro?: string;
     status?: string;
   }>;
 };
@@ -83,16 +88,18 @@ const statusFilters = [
   { label: "Canceladas", status: "cancelled" },
 ];
 
-export default async function ManutencaoPage({ searchParams }: PageProps) {
+export default async function ManutencaoPage({ searchParams, loading = false }: PageProps) {
   const profile = await requireUserProfile();
   const access = await getFrotasPermissionAccess(profile);
+  if (!access.canViewManutencao) redirect("/frotas");
 
   const params = await searchParams;
   const prefeituraId =
     profile.role === "bdl_admin"
       ? params.prefeitura
       : profile.prefeitura_id ?? undefined;
-  const data = await getManutencoesData({
+  const data = loading ? await getFrotasLoadingData(profile, prefeituraId) : await getManutencoesData({
+    registroId: params.registro,
     prefeituraId,
     query: params.q,
     status: params.status,
@@ -128,6 +135,7 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
 
   return (
     <FrotasShell
+      loading={loading}
       active="manutencao"
       actions={
         <ManutencaoToolbar
@@ -156,6 +164,7 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
                 </div>
               </div>
               <ListMetrics
+                loading={loading}
                 items={[
                   { label: "Total", value: data.manutencoes.length },
                 ]}
@@ -163,7 +172,7 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
             </div>
           </CardHeader>
           <CardContent>
-            {data.manutencoes.length ? (
+            {loading || data.manutencoes.length ? (
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -182,7 +191,7 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.manutencoes.map((manutencao) => (
+                    {loading ? <TableLoadingRows columns={10} /> : data.manutencoes.map((manutencao) => (
                       <TableRow key={manutencao.id}>
                         <TableCell>
                           <div className="min-w-[180px]">
@@ -222,6 +231,7 @@ export default async function ManutencaoPage({ searchParams }: PageProps) {
                         </TableCell>
                         <TableCell>
                           <ManutencaoActions
+                            openDetails={params.registro === manutencao.id}
                             access={access}
                             canDelete={profile.role === "bdl_admin"}
                             manutencao={manutencao}
@@ -259,7 +269,7 @@ function ManutencaoToolbar({
   data: Awaited<ReturnType<typeof getManutencoesData>>;
   params: Awaited<PageProps["searchParams"]>;
 }) {
-  const hasActiveFilters = Boolean(params.q?.trim() || params.status || params.prefeitura);
+  const hasActiveFilters = Boolean(params.q?.trim() || params.status || params.prefeitura || params.registro);
 
   return (
     <div className="flex w-full min-w-0 items-center justify-end gap-2">
@@ -351,17 +361,19 @@ function ManutencaoToolbar({
 }
 
 function ManutencaoActions({
+  openDetails = false,
   canDelete,
   access,
   manutencao,
 }: {
+  openDetails?: boolean;
   canDelete: boolean;
   access: Awaited<ReturnType<typeof getFrotasPermissionAccess>>;
   manutencao: FrotaManutencao;
 }) {
   return (
     <div className="flex justify-end gap-1">
-      <Dialog>
+      <Dialog defaultOpen={openDetails}>
         <Tooltip>
           <TooltipTrigger
             render={

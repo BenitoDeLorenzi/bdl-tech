@@ -936,6 +936,7 @@ export async function createAbastecimento(
       arla_incluso: arlaIncluso,
       data_abastecimento: dataAbastecimento,
       emitido_por: emitidoPor,
+      atividade_usuario_id: profile.id,
       expires_at: expiresAt,
       fornecedor: posto.nome,
       litros: null,
@@ -985,12 +986,23 @@ export async function completeAbastecimento(
   _previousState: FrotaActionState,
   formData: FormData
 ): Promise<FrotaActionState> {
-  const id = getRequiredValue(formData, "id");
-  const permissionError = await requireFuelCompletePermission(id);
+  return completeAbastecimentoForSource(formData, "administracao");
+}
 
-  if (permissionError) {
-    return { error: permissionError };
-  }
+export async function completeAbastecimentoPosto(
+  _previousState: FrotaActionState,
+  formData: FormData
+): Promise<FrotaActionState> {
+  return completeAbastecimentoForSource(formData, "posto");
+}
+
+async function completeAbastecimentoForSource(
+  formData: FormData,
+  source: "administracao" | "posto"
+): Promise<FrotaActionState> {
+  const id = getRequiredValue(formData, "id");
+  const actor = await resolveFuelCompletionActor(id, source);
+  if ("error" in actor) return { error: actor.error };
 
   const quilometragemValue = getRequiredValue(formData, "quilometragem");
   const quilometragem = Number(quilometragemValue);
@@ -1093,6 +1105,8 @@ export async function completeAbastecimento(
     .update({
       completed_at: new Date().toISOString(),
       concluido_por: concluidoPor,
+      atividade_por: actor.nome,
+      atividade_usuario_id: actor.usuarioId,
       litros,
       numero_nota_fiscal: numeroNotaFiscal,
       quilometragem,
@@ -1188,6 +1202,8 @@ export async function cancelAbastecimento(
     .from("frota_abastecimentos")
     .update({
       cancelled_at: new Date().toISOString(),
+      atividade_por: profile.nome,
+      atividade_usuario_id: profile.id,
       motivo_cancelamento: motivoCancelamento,
       status: "cancelled",
       updated_at: new Date().toISOString(),
@@ -1441,6 +1457,8 @@ export async function createManutencao(
       observacoes,
       oficina: selectedOficina.nome,
       oficina_id: selectedOficina.id,
+      atividade_por: profile.nome,
+      atividade_usuario_id: profile.id,
       prefeitura_id: veiculo.prefeitura_id,
       quilometragem: quilometragem || null,
       responsavel,
@@ -1494,6 +1512,7 @@ export async function finishManutencao(
   _previousState: FrotaActionState,
   formData: FormData
 ): Promise<FrotaActionState> {
+  const profile = await requireUserProfile();
   const permissionError = await requireFrotasPermission("maintenance.complete");
 
   if (permissionError) {
@@ -1512,7 +1531,7 @@ export async function finishManutencao(
   const supabase = createSupabaseServerClient();
   const { data: manutencao, error: manutencaoError } = await supabase
     .from("frota_manutencoes")
-    .select("id,prefeitura_id,veiculo_id")
+    .select("id,prefeitura_id,veiculo_id,status")
     .eq("id", id)
     .single();
 
@@ -1524,7 +1543,14 @@ export async function finishManutencao(
     };
   }
 
+  if (profile.role !== "bdl_admin" && manutencao.prefeitura_id !== profile.prefeitura_id) {
+    return { error: "Esta manutenção não pertence à sua empresa." };
+  }
+  if (manutencao.status !== "open") return { error: "Somente manutenções abertas podem ser concluídas." };
+
   const updatePayload: Record<string, unknown> = {
+    atividade_por: profile.nome,
+    atividade_usuario_id: profile.id,
     data_saida: dataSaida,
     observacoes,
     status: "completed",
@@ -1535,13 +1561,13 @@ export async function finishManutencao(
     updatePayload.valor = valor;
   }
 
-  const { error } = await supabase
+  const { data: completed, error } = await supabase
     .from("frota_manutencoes")
     .update(updatePayload)
-    .eq("id", id);
+    .eq("id", id).eq("status", "open").select("id").maybeSingle();
 
-  if (error) {
-    return { error: formatSupabaseError(error.message) };
+  if (error || !completed) {
+    return { error: formatSupabaseError(error?.message ?? "Não foi possível concluir. Atualize a lista e tente novamente.") };
   }
 
   const attachmentError = await uploadMaintenanceAttachments({
@@ -1695,7 +1721,7 @@ export async function cancelManutencao(_previousState: FrotaActionState, formDat
   if (registro.status !== "open") return { error: "Somente registros abertos podem ser cancelados." };
   const now = new Date().toISOString();
   const { data: cancelled, error } = await supabase.from("frota_manutencoes")
-    .update({ status: "cancelled", motivo_cancelamento: motivo, cancelled_at: now, updated_at: now })
+    .update({ status: "cancelled", motivo_cancelamento: motivo, cancelled_at: now, updated_at: now, atividade_por: profile.nome, atividade_usuario_id: profile.id })
     .eq("id", id).eq("prefeitura_id", registro.prefeitura_id).eq("status", "open").select("id").maybeSingle();
   if (error || !cancelled) return { error: "Não foi possível cancelar. Atualize a lista e tente novamente." };
   const { data: openMaintenance, error: openError } = await supabase.from("frota_manutencoes")
@@ -2453,39 +2479,34 @@ async function requireFrotasPermission(permission: string) {
   return "Você não tem permissão para executar esta ação.";
 }
 
-async function requireFuelCompletePermission(abastecimentoId: string) {
-  if (!abastecimentoId) {
-    return "Ordem de abastecimento não encontrada.";
+async function resolveFuelCompletionActor(abastecimentoId: string, source: "administracao" | "posto") {
+  if (!abastecimentoId) return { error: "Ordem de abastecimento não encontrada." };
+
+  // Each entry point requires its own session; never fall back to another login.
+  const posto = source === "posto" ? await getPostoSession() : null;
+  const profile = source === "administracao" ? await getCurrentUserProfile() : null;
+  if (source === "posto" ? !posto : !profile || !(await hasFrotasPermission(profile, "fuel.complete"))) {
+    return { error: "Você não tem permissão para executar esta ação. Entre novamente." };
   }
 
-  const profile = await getCurrentUserProfile();
-
-  if (profile && (await hasFrotasPermission(profile, "fuel.complete"))) {
-    return null;
-  }
-
-  const postoSession = await getPostoSession();
-
-  if (!postoSession) {
-    return "Você não tem permissão para executar esta ação.";
-  }
-
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase
+  const { data, error } = await createSupabaseServerClient()
     .from("frota_abastecimentos")
-    .select("id,posto_id,status")
+    .select("id,prefeitura_id,posto_id,status")
     .eq("id", abastecimentoId)
     .maybeSingle();
+  if (error || !data) return { error: formatSupabaseError(error?.message ?? "Ordem não encontrada.") };
+  if (data.status !== "issued") return { error: "Somente ordens pendentes podem ser concluídas." };
 
-  if (error || !data) {
-    return formatSupabaseError(error?.message ?? "Ordem não encontrada.");
+  if (posto) {
+    if (data.posto_id !== posto.id || data.prefeitura_id !== posto.prefeitura_id) {
+      return { error: "Esta ordem não está disponível para este posto." };
+    }
+    return { nome: posto.nome, usuarioId: null };
   }
-
-  if (data.posto_id !== postoSession.id || data.status !== "issued") {
-    return "Esta ordem não está disponível para este posto.";
+  if (!profile || (profile.role !== "bdl_admin" && data.prefeitura_id !== profile.prefeitura_id)) {
+    return { error: "Este registro não pertence à sua empresa." };
   }
-
-  return null;
+  return { nome: profile.nome, usuarioId: profile.id };
 }
 
 async function resolveMaintenanceWorkshop(

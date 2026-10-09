@@ -14,7 +14,9 @@ const metricIcons = { money: CircleDollarSign, gauge: Gauge };
 
 export function ListMetrics({
   items,
+  loading = false,
 }: {
+  loading?: boolean;
   items: Array<{ label: string; value: number | string; tone?: keyof typeof metricStyles; icon?: keyof typeof metricIcons }>;
 }) {
   return (
@@ -25,7 +27,7 @@ export function ListMetrics({
         return (
           <Badge key={label} variant="outline" className={cn("h-8 gap-1.5 rounded-lg px-3 font-normal", className)}>
             <Icon aria-hidden="true" />
-            <span className="font-semibold tabular-nums">{typeof value === "number" ? value.toLocaleString("pt-BR") : value}</span>
+            <span className="font-semibold tabular-nums">{loading ? "—" : typeof value === "number" ? value.toLocaleString("pt-BR") : value}</span>
             <span>{label}</span>
           </Badge>
         );

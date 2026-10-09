@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createSupabaseAuthServerClient } from "@/lib/supabase-auth-server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -39,7 +40,7 @@ type PerfilRow = {
   avatar_path: string | null;
 };
 
-export async function getCurrentUserProfile() {
+export const getCurrentUserProfile = cache(async function getCurrentUserProfile() {
   const authClient = await createSupabaseAuthServerClient();
   const {
     data: { user },
@@ -89,7 +90,7 @@ export async function getCurrentUserProfile() {
     role: perfil.role,
     username: perfil.username,
   } satisfies CurrentUserProfile;
-}
+});
 
 export async function requireUserProfile() {
   const profile = await getCurrentUserProfile();

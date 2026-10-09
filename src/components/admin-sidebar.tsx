@@ -3,9 +3,11 @@ import {
   sidebarNavClass,
 } from "@/components/sidebar-styles";
 import Link from "next/link";
+import { SupportBadge } from "@/components/support/support-live";
 import { SidebarIdentity } from "@/components/sidebar-identity";
 import {
   Building2,
+  Headset,
   Car,
   ClipboardList,
   ExternalLink,
@@ -41,6 +43,7 @@ type AdminSidebarProps = {
     | "licencas"
     | "usuarios"
     | "modulos"
+    | "atendimentos"
     | "integracoes";
   profile: CurrentUserProfile;
 };
@@ -58,6 +61,7 @@ const navModulos = [
 ] as const;
 
 const navAdministracao = [
+  { key: "atendimentos", label: "Atendimentos", href: "/atendimentos", icon: Headset },
   {
     key: "modulos",
     label: "Catálogo de módulos",
@@ -145,6 +149,7 @@ export function AdminSidebar({ active, profile }: AdminSidebarProps) {
                     <item.icon />
                     <span>{item.label}</span>
                   </SidebarMenuButton>
+                  {item.key === "atendimentos" && <SupportBadge />}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>

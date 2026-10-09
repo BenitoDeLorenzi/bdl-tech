@@ -13,9 +13,10 @@ import { DialogFooter } from "@/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { type FrotaAbastecimento } from "@/lib/frotas-data";
-import { completeAbastecimento } from "./actions";
+import { completeAbastecimento, completeAbastecimentoPosto } from "./actions";
 
 type AbastecimentoCompleteFormProps = {
+  portalPosto?: boolean;
   abastecimento: FrotaAbastecimento;
 };
 
@@ -32,13 +33,14 @@ type AbastecimentoCompleteValues = {
 };
 
 export function AbastecimentoCompleteForm({
+  portalPosto = false,
   abastecimento,
 }: AbastecimentoCompleteFormProps) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [state, formAction, actionPending] = useActionState(
-    completeAbastecimento,
+    portalPosto ? completeAbastecimentoPosto : completeAbastecimento,
     {}
   );
   const form = useForm<AbastecimentoCompleteValues>({

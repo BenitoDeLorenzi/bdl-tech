@@ -49,6 +49,7 @@ type UsoVeiculoRow = Omit<
 };
 
 export async function getUsoVeiculosData(params?: {
+  registroId?: string;
   prefeituraId?: string;
   query?: string;
   status?: string;
@@ -79,6 +80,7 @@ export async function getUsoVeiculosData(params?: {
     usosQuery = usosQuery.eq("status", params.status);
   }
 
+  if (params?.registroId) usosQuery = usosQuery.eq("id", /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.registroId) ? params.registroId : "00000000-0000-0000-0000-000000000000");
   const { data, error } = await usosQuery;
 
   if (error) {

@@ -1,3 +1,5 @@
+import { getFrotasLoadingData } from "@/app/frotas/frotas-loading-data";
+import { TableLoadingRows } from "@/components/table-loading";
 import { ListDeleteButton } from "@/components/list-delete-button";
 import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
@@ -67,6 +69,7 @@ import { RelatorioForm } from "./relatorio-form";
 export const dynamic = "force-dynamic";
 
 type PageProps = {
+  loading?: boolean;
   searchParams: Promise<{
     prefeitura?: string;
     q?: string;
@@ -102,7 +105,7 @@ const reportStatusStyles: Record<RelatorioStatus, string> = {
   generated: "border-emerald-200 bg-emerald-50 text-emerald-700",
 };
 
-export default async function RelatoriosPage({ searchParams }: PageProps) {
+export default async function RelatoriosPage({ searchParams, loading = false }: PageProps) {
   const profile = await requireUserProfile();
   const access = await getFrotasPermissionAccess(profile);
 
@@ -116,8 +119,8 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
       ? params.prefeitura
       : profile.prefeitura_id ?? undefined;
   const [data, relatorios] = await Promise.all([
-    getAbastecimentosData({ prefeituraId }),
-    getRelatorios({
+    loading ? getFrotasLoadingData(profile, prefeituraId) : getAbastecimentosData({ prefeituraId }),
+    loading ? Promise.resolve([]) : getRelatorios({
       prefeituraId,
       query: params.q,
       status: params.status,
@@ -156,6 +159,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
 
   return (
     <FrotasShell
+      loading={loading}
       active="relatorios"
       actions={
         <RelatoriosToolbar
@@ -178,6 +182,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
                 <CardTitle>Relatórios criados</CardTitle>
               </div>
               <ListMetrics
+                loading={loading}
                 items={[
                   { label: "Total", value: relatorios.length },
                 ]}
@@ -185,7 +190,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
             </div>
           </CardHeader>
           <CardContent>
-            {relatorios.length ? (
+            {loading || relatorios.length ? (
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -203,7 +208,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {relatorios.map((relatorio) => (
+                    {loading ? <TableLoadingRows columns={8} /> : relatorios.map((relatorio) => (
                       <RelatorioRow key={relatorio.id} relatorio={relatorio} canDelete={profile.role === "bdl_admin"} />
                     ))}
                   </TableBody>

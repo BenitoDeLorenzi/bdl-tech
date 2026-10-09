@@ -1,3 +1,5 @@
+import { getFrotasLoadingData } from "@/app/frotas/frotas-loading-data";
+import { TableLoadingRows } from "@/components/table-loading";
 import { ListDeleteButton } from "@/components/list-delete-button";
 import { ListMetrics } from "@/components/list-metrics";
 import Link from "next/link";
@@ -66,6 +68,7 @@ import { VehicleLookupSync } from "./vehicle-lookup-sync";
 export const dynamic = "force-dynamic";
 
 type PageProps = {
+  loading?: boolean;
   searchParams: Promise<{
     deleted?: string;
     error?: string;
@@ -84,7 +87,7 @@ const statusFilters = [
   { label: "Inativos", status: "inactive" },
 ];
 
-export default async function FrotasPage({ searchParams }: PageProps) {
+export default async function FrotasPage({ searchParams, loading = false }: PageProps) {
   const profile = await requireUserProfile();
   const access = await getFrotasPermissionAccess(profile);
 
@@ -93,7 +96,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
     profile.role === "bdl_admin"
       ? params.prefeitura
       : profile.prefeitura_id ?? undefined;
-  const data = await getFrotasData({
+  const data = loading ? await getFrotasLoadingData(profile, prefeituraId) : await getFrotasData({
     prefeituraId,
     query: params.q,
     status: params.status,
@@ -129,6 +132,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
 
   return (
     <FrotasShell
+      loading={loading}
       active="veiculos"
       actions={
         <VeiculosToolbar
@@ -161,6 +165,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                     </div>
                   </div>
                   <ListMetrics
+                loading={loading}
                     items={[
                       { label: "Ativos", value: data.metricas.ativos, tone: "success" },
                       { label: "Total", value: data.metricas.total },
@@ -169,7 +174,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                 </div>
               </CardHeader>
               <CardContent>
-                {data.veiculos.length ? (
+                {loading || data.veiculos.length ? (
                   <div className="overflow-hidden rounded-lg border">
                     <Table>
                       <TableHeader>
@@ -186,7 +191,7 @@ export default async function FrotasPage({ searchParams }: PageProps) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {data.veiculos.map((veiculo) => (
+                        {loading ? <TableLoadingRows columns={7} /> : data.veiculos.map((veiculo) => (
                           <TableRow key={veiculo.id}>
                             <TableCell>
                               <VeiculoAvatar fotoUrl={veiculo.foto_url} placa={veiculo.placa} className="size-12" />

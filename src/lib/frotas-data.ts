@@ -930,6 +930,7 @@ export async function getVeiculoPlexiResumo(veiculoId: string) {
 }
 
 export async function getManutencoesData(params?: {
+  registroId?: string;
   prefeituraId?: string;
   query?: string;
   status?: string;
@@ -967,6 +968,7 @@ export async function getManutencoesData(params?: {
     manutencoesQuery = manutencoesQuery.eq("status", params.status);
   }
 
+  if (params?.registroId) manutencoesQuery = manutencoesQuery.eq("id", /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.registroId) ? params.registroId : "00000000-0000-0000-0000-000000000000");
   const manutencoesResult = await manutencoesQuery;
 
   if (manutencoesResult.error) {
@@ -1056,6 +1058,9 @@ export async function getManutencoesData(params?: {
 }
 
 export async function getAbastecimentosData(params?: {
+  orderId?: string;
+  completedFrom?: string;
+  completedTo?: string;
   postoId?: string;
   prefeituraId?: string;
   query?: string;
@@ -1110,9 +1115,32 @@ export async function getAbastecimentosData(params?: {
     abastecimentosQuery = abastecimentosQuery.eq("posto_id", params.postoId);
   }
 
+  if (params?.orderId) abastecimentosQuery = abastecimentosQuery.eq("id", params.orderId);
+
+  if (params?.completedFrom) abastecimentosQuery = abastecimentosQuery.gte("completed_at", `${params.completedFrom}T00:00:00-03:00`);
+  if (params?.completedTo) {
+    const end = new Date(`${params.completedTo}T00:00:00-03:00`);
+    end.setUTCDate(end.getUTCDate() + 1);
+    abastecimentosQuery = abastecimentosQuery.lt("completed_at", end.toISOString());
+  }
+  // Station history totals must include every matching record, beyond the API page limit.
+  const loadOrders = async () => {
+    const first = await abastecimentosQuery.range(0, 999);
+    if (!params?.postoId || params.status !== "completed" || first.error || !first.data) return first;
+    const rows = [...first.data];
+    let batchSize = first.data.length;
+    while (batchSize === 1000) {
+      const next = await abastecimentosQuery.range(rows.length, rows.length + 999);
+      if (next.error) return next;
+      rows.push(...(next.data ?? []));
+      batchSize = next.data?.length ?? 0;
+    }
+    return { ...first, data: rows };
+  };
+
   const [postosResult, abastecimentosResult] = await Promise.all([
     postosQuery,
-    abastecimentosQuery,
+    loadOrders(),
   ]);
 
   if (postosResult.error) {

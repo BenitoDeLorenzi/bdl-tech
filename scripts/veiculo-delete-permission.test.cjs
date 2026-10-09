@@ -7,7 +7,7 @@ function load(file,deps){const exports={};vm.runInNewContext(ts.transpileModule(
  for(const role of ['municipal_admin','municipal_user','bdl_admin']){
   const profile={role,id:'user',prefeitura_id:'company'};
   const q={select(){return q},eq(){return Promise.resolve({data:[{permissoes:{chave:'vehicles.delete'}}]})}};
-  const permissions=load('src/lib/frotas-permissions.ts',{'@/lib/empresa-access':{hasModuleAccess:async()=>true},'@/lib/supabase-server':{createSupabaseServerClient:()=>({from:()=>q})}});
+  const permissions=load('src/lib/frotas-permissions.ts',{'react':require('react'),'@/lib/empresa-access':{hasModuleAccess:async()=>true},'@/lib/supabase-server':{createSupabaseServerClient:()=>({from:()=>q})}});
   assert.equal((await permissions.getFrotasPermissionAccess(profile)).canDeleteVeiculos,role==='bdl_admin');
   assert.equal(await permissions.hasFrotasPermission(profile,'vehicles.delete'),role==='bdl_admin');
   if(role!=='bdl_admin'){

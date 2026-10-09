@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { hasModuleAccess } from "@/lib/empresa-access";
 import type { CurrentUserProfile } from "@/lib/auth-data";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -98,7 +99,7 @@ type UsuarioPermissaoRow = {
   } | null;
 };
 
-export async function getFrotasPermissionAccess(
+export const getFrotasPermissionAccess = cache(async function getFrotasPermissionAccess(
   profile: CurrentUserProfile,
 ): Promise<FrotasPermissionAccess> {
   if (!(await hasModuleAccess(profile, "frotas-publicas")))
@@ -158,7 +159,7 @@ export async function getFrotasPermissionAccess(
     isFullAccess: false,
     keys: Array.from(keys),
   };
-}
+});
 
 function hasAnyPrefix(keys: Set<string>, prefix: string) {
   return Array.from(keys).some((key) => key.startsWith(prefix));

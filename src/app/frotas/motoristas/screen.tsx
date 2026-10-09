@@ -1,3 +1,5 @@
+import { getFrotasLoadingData } from "@/app/frotas/frotas-loading-data";
+import { TableLoadingRows } from "@/components/table-loading";
 import { DeleteCadastroButton } from "@/components/delete-cadastro-button";
 import { deleteMotorista } from "../cadastro-actions";
 import { ListMetrics } from "@/components/list-metrics";
@@ -64,6 +66,7 @@ import { updateMotoristaStatus } from "./actions";
 export const dynamic = "force-dynamic";
 
 type PageProps = {
+  loading?: boolean;
   searchParams: Promise<{
     prefeitura?: string;
     q?: string;
@@ -77,7 +80,7 @@ const statusFilters = [
   { label: "Inativos", status: "inactive" },
 ];
 
-export default async function MotoristasPage({ searchParams }: PageProps) {
+export default async function MotoristasPage({ searchParams, loading = false }: PageProps) {
   const profile = await requireUserProfile();
   const access = await getFrotasPermissionAccess(profile);
 
@@ -90,7 +93,7 @@ export default async function MotoristasPage({ searchParams }: PageProps) {
     profile.role === "bdl_admin"
       ? params.prefeitura
       : profile.prefeitura_id ?? undefined;
-  const data = await getMotoristasData({
+  const data = loading ? await getFrotasLoadingData(profile, prefeituraId) : await getMotoristasData({
     prefeituraId,
     query: params.q,
     status: params.status,
@@ -126,6 +129,7 @@ export default async function MotoristasPage({ searchParams }: PageProps) {
 
   return (
     <FrotasShell
+      loading={loading}
       active="motoristas"
       actions={
         <MotoristasToolbar
@@ -155,6 +159,7 @@ export default async function MotoristasPage({ searchParams }: PageProps) {
                 </div>
               </div>
               <ListMetrics
+                loading={loading}
                 items={[
                   { label: "Ativos", value: data.metricas.ativos, tone: "success" },
                   { label: "Em uso", value: data.metricas.emUso, tone: "inUse" },
@@ -164,7 +169,7 @@ export default async function MotoristasPage({ searchParams }: PageProps) {
             </div>
           </CardHeader>
           <CardContent>
-            {data.motoristas.length ? (
+            {loading || data.motoristas.length ? (
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -180,7 +185,7 @@ export default async function MotoristasPage({ searchParams }: PageProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.motoristas.map((motorista) => (
+                    {loading ? <TableLoadingRows columns={6} /> : data.motoristas.map((motorista) => (
                       <TableRow key={motorista.id}>
                         <TableCell>
                           <div className="min-w-[190px]">
